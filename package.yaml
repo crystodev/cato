@@ -1,0 +1,118 @@
+name:                cato
+version:             0.1.0.0
+github:              "crystodev/cato"
+license:             BSD3
+author:              "Crystodev"
+maintainer:          "example@example.com"
+copyright:           "Crystodev"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/crystodev/cato#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- aeson >= 1.5
+- bytestring
+- containers
+- dotenv
+- directory >= 1.3 && < 2
+- filepath >= 1.4 && < 2
+- format-numbers
+- optparse-applicative
+- process >= 1.6
+- split
+
+library:
+  source-dirs: src
+
+executables:
+  address-info:
+    main:                address-info.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cato
+
+  burn-token:
+    main:                burn-token.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cato
+
+  create-address:
+    main:                create-address.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cato
+
+  create-policy:
+    main:                create-policy.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cato
+
+  mint-token:
+    main:                mint-token.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cato
+
+  policy-info:
+    main:                policy-info.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cato
+
+  send-token:
+    main:                send-token.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cato
+  
+tests:
+  cato-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cato
