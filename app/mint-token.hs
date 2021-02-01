@@ -5,8 +5,8 @@ import Data.Semigroup ((<>))
 import Control.Monad (void, when, unless)
 import Data.Maybe ( isJust, fromJust )
 import Baseutils ( capitalized )
-import Tokutils ( Address, AddressType(Payment), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
-  calculateTokensBalance, createPolicy, getAddress, getAddressFile, getPolicy, getPolicyPath, Policy(Policy, policyId ), getSkeyFile, 
+import TokenUtils ( Address, AddressType(Payment), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
+  calculateTokensBalance, createPolicy, getAddress, getAddressFile, getPolicy, getPolicyPath, Policy(Policy, policyId ), getSKeyFile, 
   recordToken, saveProtocolParameters )
 import Transaction ( buildMintTransaction, calculateMintFees, getTransactionFile, FileType(..), getUtxoFromWallet, signMintTransaction,
   submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
@@ -80,8 +80,8 @@ mintToken (Options mintOptions dstTypeAddress) = do
   policiesFolder <- getEnv "POLICIES_FOLDER"
   networkSocket <- getEnv "CARDANO_NODE_SOCKET_PATH"
   network <- getEnv "NETWORK"
-  snetworkMagic <- getEnv "NETWORK_MAGIC"
-  let networkMagic = read snetworkMagic :: Int
+  sNetworkMagic <- getEnv "NETWORK_MAGIC"
+  let networkMagic = read sNetworkMagic :: Int
   networkEra <- getEnv "NETWORK_ERA"
   -- mint owner, policy and token
   let ownerName = capitalized $ owner mintOptions
@@ -91,15 +91,15 @@ mintToken (Options mintOptions dstTypeAddress) = do
       policiesPath = getPolicyPath addressesPath ownerName policyName policiesFolder
       
   -- source address and signing key
-  msrcAddress <- getSrcAddress ownerName addressesPath
-  let skeyFile = getSkeyFile addressesPath Payment ownerName
+  mSrcAddress <- getSrcAddress ownerName addressesPath
+  let sKeyFile = getSKeyFile addressesPath Payment ownerName
 
   -- destination address
-  mdstAddress <- getDstAddress dstTypeAddress addressesPath
+  mDstAddress <- getDstAddress dstTypeAddress addressesPath
 
-  Control.Monad.when (isJust msrcAddress && isJust mdstAddress) $ do
+  Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
     let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = "--" ++ networkEra, networkEnv = networkSocket }
-    doMint bNetwork ownerName msrcAddress skeyFile mdstAddress policyName policiesPath (Just tokenName) tokenAmount
+    doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policiesPath (Just tokenName) tokenAmount
   putStrLn ""
 
 -- get srcAddress from owner
@@ -144,41 +144,41 @@ buildPolicyName policyName _ = policyName
 
 -- mint amount of token from owner for destination address on given network
 doMint :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> String -> String -> Maybe String -> Int -> IO ()
-doMint bNetwork ownerName msrcAddress skeyFile mdstAddress policyName policiesPath mtokenName tokenAmount = do
+doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policiesPath mTokenName tokenAmount = do
   let protocolParametersFile = "/tmp/protparams.json"
       -- 1. Create a policy for our token
-      polName = buildPolicyName policyName mtokenName
+      polName = buildPolicyName policyName mTokenName
   
   policy <- createPolicy polName policiesPath
   -- let policy = getPolicy policyName policiesPath
-  when (isJust policy && tokenAmount /= 0 && isJust msrcAddress) $ do
+  when (isJust policy && tokenAmount /= 0 && isJust mSrcAddress) $ do
     -- 2. Extract protocol parameters (needed for fee calculations)
     saveProtocolParameters bNetwork protocolParametersFile
 
     -- 3. Get UTXOs from our wallet
-    utxo <- getUtxoFromWallet bNetwork (fromJust msrcAddress)
+    utxo <- getUtxoFromWallet bNetwork (fromJust mSrcAddress)
 
     -- 4. Calculate tokens balance
     let balances = calculateTokensBalance(tokens utxo)
     -- print balances
 
     -- 5. Calculate fees for the transaction
-    minFee <- calculateMintFees bNetwork (fromJust msrcAddress) mtokenName tokenAmount (policyId (fromJust policy)) utxo protocolParametersFile
+    minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) mTokenName tokenAmount (policyId (fromJust policy)) utxo protocolParametersFile
     -- print (fromJust minFee)
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
-      let okFeeFile = getTransactionFile mtokenName OkFee
-      rc <- buildMintTransaction bNetwork (fromJust msrcAddress) (fromJust mdstAddress) mtokenName tokenAmount (policyId (fromJust policy)) utxo (fromJust minFee) okFeeFile
+      let okFeeFile = getTransactionFile mTokenName OkFee
+      rc <- buildMintTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) mTokenName tokenAmount (policyId (fromJust policy)) utxo (fromJust minFee) okFeeFile
       unless rc $ print "Failed to build transaction"
       
       -- 7. Sign the transaction
-      let signFile = getTransactionFile mtokenName Sign
-      signMintTransaction bNetwork skeyFile (fromJust policy) okFeeFile signFile
+      let signFile = getTransactionFile mTokenName Sign
+      signMintTransaction bNetwork sKeyFile (fromJust policy) okFeeFile signFile
 
       -- 8. Submit the transaction to the blockchain
       rc <- submitTransaction bNetwork signFile
       when rc $ do
-        when (isJust mtokenName) $ do
-          recordToken (fromJust policy) (fromJust mtokenName)
+        when (isJust mTokenName) $ do
+          recordToken (fromJust policy) (fromJust mTokenName)
       -- print signFile

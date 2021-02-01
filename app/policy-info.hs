@@ -6,7 +6,7 @@ import Baseutils ( capitalized )
 import Control.Monad (void, when, filterM, mapM_ )
 import Configuration.Dotenv (loadFile, defaultConfig )
 import System.Directory ( doesDirectoryExist, getDirectoryContents, doesFileExist )
-import Tokutils ( getPolicy, getPolicyPath, getPolicyId, Policy(..) )
+import TokenUtils ( getPolicy, getPolicyPath, getPolicyId, Policy(..) )
 
 type Owner = String
 type Pol = String

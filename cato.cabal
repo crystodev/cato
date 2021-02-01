@@ -28,7 +28,7 @@ source-repository head
 library
   exposed-modules:
       Baseutils
-      Tokutils
+      TokenUtils
       Transaction
   other-modules:
       Paths_cato

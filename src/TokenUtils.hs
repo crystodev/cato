@@ -1,10 +1,10 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-module Tokutils ( buildPolicyName, createKeypair, createPolicy, Address, AddressType(Payment, Stake), 
+module TokenUtils ( buildPolicyName, createKeyPair, createPolicy, Address, AddressType(Payment, Stake), 
   BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
   calculateTokensBalance, getPolicy, getPolicyPath, getPolicyId, getPolicyIdFromTokenId, Policy(..), 
-  getProtocolKeyDeposit, saveProtocolParameters, getAddress, getAddressFile, getSkeyFile, getVkeyFile, recordToken, uglyParse ) where
+  getProtocolKeyDeposit, saveProtocolParameters, getAddress, getAddressFile, getSKeyFile, getVKeyFile, recordToken, uglyParse ) where
 
 import System.Directory ( createDirectoryIfMissing, doesFileExist)
 import System.FilePath ( takeDirectory )
@@ -34,8 +34,8 @@ $(deriveJSON defaultOptions{fieldLabelModifier = \f -> if f == "keyType" then "t
 data Policy = Policy
   { 
     policyScript :: FilePath
-  , policyVkey   :: FilePath
-  , policySkey   :: FilePath
+  , policyVKey   :: FilePath
+  , policySKey   :: FilePath
   , tokensPath   :: FilePath
   , policyId     :: String
   , policyName   :: String
@@ -53,8 +53,8 @@ buildPolicyName policyName _ = policyName
 buildPolicyPath :: String -> String -> Policy
 buildPolicyPath policyName policyPath = Policy {
     policyScript = policyPath ++ "policy.script"
-  , policyVkey = policyPath ++ "policy.vkey"
-  , policySkey = policyPath ++ "policy.skey"
+  , policyVKey = policyPath ++ "policy.vkey"
+  , policySKey = policyPath ++ "policy.skey"
   , tokensPath = policyPath ++ "tokens/"
   , policyId =  ""
   , policyName = ""
@@ -70,23 +70,23 @@ createPolicy policyName policyPath = do
   if not bool then do
     createDirectoryIfMissing True policyPath
     -- create policy key files
-    let runParams = ["address", "key-gen", "--verification-key-file", policyVkey policy, "--signing-key-file", policySkey policy]
+    let runParams = ["address", "key-gen", "--verification-key-file", policyVKey policy, "--signing-key-file", policySKey policy]
     (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" runParams ){ std_out = CreatePipe }
     r <- waitForProcess ph
     -- create hash
-    let runParams2 = ["address", "key-hash", "--payment-verification-key-file", policyVkey policy]
-    (_, Just hout, _, _) <- createProcess (proc "cardano-cli" runParams2){ std_out = CreatePipe }
-    keyh <- hGetContents hout
-    let keyhash = filter (/= '\n') keyh
+    let runParams2 = ["address", "key-hash", "--payment-verification-key-file", policyVKey policy]
+    (_, Just hOut, _, _) <- createProcess (proc "cardano-cli" runParams2){ std_out = CreatePipe }
+    keyH <- hGetContents hOut
+    let keyHash = filter (/= '\n') keyH
     -- create policy script
-    let myPolicyScript = PolicyScript { keyHash = keyhash, keyType = "sig"}
+    let myPolicyScript = PolicyScript { keyHash = keyHash, keyType = "sig"}
     B8.writeFile (policyScript policy) (encode myPolicyScript)
   else do
     putStrLn $ "Policy exists : no policy created for " ++ policyName
   -- retrieve policy script
   let runParams3 =["transaction", "policyid", "--script-file", policyScript policy]
-  (_, Just hout, _, _) <- createProcess (proc "cardano-cli" runParams3){ std_out = CreatePipe }
-  pId <- hGetContents hout 
+  (_, Just hOut, _, _) <- createProcess (proc "cardano-cli" runParams3){ std_out = CreatePipe }
+  pId <- hGetContents hOut 
   return (Just (policy { policyId = filter (/= '\n') pId, policyName = policyName}::Policy ))
 
 -- | get Policy Folder
@@ -109,10 +109,10 @@ getPolicy policyName policyPath = do
   bool <- doesFileExist (policyScript policy)
   if bool then do 
     -- get policy id
-    (_, Just hout, _, ph) <- createProcess (proc "cardano-cli" ["transaction", "policyid", "--script-file", policyScript policy]){ std_out = CreatePipe }
+    (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" ["transaction", "policyid", "--script-file", policyScript policy]){ std_out = CreatePipe }
     r <- waitForProcess ph
-    policyId <- hGetContents hout
-    return $ Just $ Policy (policyScript policy) (policyVkey policy) (policySkey policy) (tokensPath policy) (filter (/= '\n') policyId) policyName
+    policyId <- hGetContents hOut
+    return $ Just $ Policy (policyScript policy) (policyVKey policy) (policySKey policy) (tokensPath policy) (filter (/= '\n') policyId) policyName
   else
     return Nothing
 
@@ -217,20 +217,20 @@ saveProtocolParameters bNetwork protocolParams = do
   r <- waitForProcess ph
   return True
 
--- create keypair based on address_name
-createKeypair :: AddressType -> FilePath -> String -> IO Bool
-createKeypair addressType addressesPath ownerName = do
-  let vkeyFile = getVkeyFile addressesPath addressType ownerName
-  let skeyFile = getSkeyFile addressesPath addressType ownerName
-  bool <- doesFileExist vkeyFile
+-- create key pair based on address_name
+createKeyPair :: AddressType -> FilePath -> String -> IO Bool
+createKeyPair addressType addressesPath ownerName = do
+  let vKeyFile = getVKeyFile addressesPath addressType ownerName
+  let sKeyFile = getSKeyFile addressesPath addressType ownerName
+  bool <- doesFileExist vKeyFile
   if bool then do
     putStrLn $ "key pair already exists for " ++ ownerName
     return False
   else do
-    createDirectoryIfMissing True (takeDirectory vkeyFile)
-    let saddressType = if addressType == Payment then "address" else "stake-address"
+    createDirectoryIfMissing True (takeDirectory vKeyFile)
+    let sAddressType = if addressType == Payment then "address" else "stake-address"
     
-    (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" [saddressType, "key-gen", "--verification-key-file", vkeyFile, "--signing-key-file", skeyFile]){ std_out = CreatePipe }
+    (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" [sAddressType, "key-gen", "--verification-key-file", vKeyFile, "--signing-key-file", sKeyFile]){ std_out = CreatePipe }
     r <- waitForProcess ph
     return True
 
@@ -262,11 +262,11 @@ getAddressPath addressesPath ownerName = addressesPath ++ ownerName ++ "/"
 -- give file name for name type address or key
 getAddressKeyFile :: FilePath -> AddressType -> String -> String -> FilePath
 getAddressKeyFile addressesPath addressType addressKey name = do
-  let saddressType = if addressType == Payment then "payment" else "stake"
-  let extmap = [ ("address", ".addr"), ("signing_key", ".skey"), ("verification_key", ".vkey")]
-  let extm = lookup addressKey extmap
-  case extm of
-    Just ext -> getAddressPath addressesPath name ++ saddressType ++ name ++ ext
+  let sAddressType = if addressType == Payment then "payment" else "stake"
+  let extMap = [ ("address", ".addr"), ("signing_key", ".skey"), ("verification_key", ".vkey")]
+  let extM = lookup addressKey extMap
+  case extM of
+    Just ext -> getAddressPath addressesPath name ++ sAddressType ++ name ++ ext
     _ -> ""
 
 -- give file name for name type address
@@ -274,9 +274,9 @@ getAddressFile :: FilePath -> AddressType -> String -> FilePath
 getAddressFile addressesPath addressType = getAddressKeyFile addressesPath addressType "address"
 
 -- give file name for name type signing key
-getSkeyFile :: FilePath -> AddressType -> String -> FilePath
-getSkeyFile addressesPath addressType = getAddressKeyFile addressesPath addressType "signing_key"
+getSKeyFile :: FilePath -> AddressType -> String -> FilePath
+getSKeyFile addressesPath addressType = getAddressKeyFile addressesPath addressType "signing_key"
 
 -- give file name for name type verification key
-getVkeyFile :: FilePath -> AddressType -> String -> FilePath
-getVkeyFile addressesPath addressType = getAddressKeyFile addressesPath addressType "verification_key"
+getVKeyFile :: FilePath -> AddressType -> String -> FilePath
+getVKeyFile addressesPath addressType = getAddressKeyFile addressesPath addressType "verification_key"

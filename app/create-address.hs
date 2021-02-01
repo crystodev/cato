@@ -5,7 +5,7 @@ import Data.Maybe ( isJust, fromJust )
 import Baseutils ( capitalized )
 import Control.Monad (void, when)
 import Configuration.Dotenv (loadFile, defaultConfig)
-import Tokutils ( AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), createKeypair, createPolicy, getPolicyPath, getPolicyId )
+import TokenUtils ( AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), createKeyPair, createPolicy, getPolicyPath, getPolicyId )
 import Transaction ( createAddress )
 
 type Owner = String
@@ -48,17 +48,17 @@ doCreateAddress (Options owner address) = do
   let cOwner = capitalized owner
 
   network <- getEnv "NETWORK"
-  snetworkMagic <- getEnv "NETWORK_MAGIC"
-  let networkMagic = read snetworkMagic :: Int
+  sNetworkMagic <- getEnv "NETWORK_MAGIC"
+  let networkMagic = read sNetworkMagic :: Int
   let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = "", networkEnv = "" }
   
   Control.Monad.when (paymentKey address) $ do 
-    rc <- createKeypair Payment addressesPath cOwner
-    putStrLn $ "Creating payment keypair for " ++ cOwner
+    rc <- createKeyPair Payment addressesPath cOwner
+    putStrLn $ "Creating payment key pair for " ++ cOwner
 
   Control.Monad.when (stakeKey address) $ do 
-    rc <- createKeypair Stake addressesPath cOwner
-    putStrLn $ "Creating stake keypair for " ++ cOwner
+    rc <- createKeyPair Stake addressesPath cOwner
+    putStrLn $ "Creating stake key pair for " ++ cOwner
 
   Control.Monad.when (payment address) $ do 
     ownerAddress <- createAddress bNetwork Payment addressesPath cOwner

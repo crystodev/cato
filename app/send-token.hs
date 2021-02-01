@@ -5,8 +5,8 @@ import Data.Semigroup ((<>))
 import Control.Monad (void, when, unless)
 import Data.Maybe ( isJust, isNothing, fromJust, fromMaybe )
 import Baseutils ( capitalized )
-import Tokutils ( Address, AddressType(Payment), buildPolicyName, BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
-  calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyIdFromTokenId, getPolicyPath, Policy(Policy, policyId), getSkeyFile, saveProtocolParameters )
+import TokenUtils ( Address, AddressType(Payment), buildPolicyName, BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
+  calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyIdFromTokenId, getPolicyPath, Policy(Policy, policyId), getSKeyFile, saveProtocolParameters )
 import Transaction ( buildSendTransaction, calculateSendFees, getTransactionFile, FileType(..), getUtxoFromWallet, getTokenIdFromName, signSendTransaction,
   submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 
@@ -86,8 +86,8 @@ sendToken (Options sendOptions dstTypeAddress) = do
   policiesFolder <- getEnv "POLICIES_FOLDER"
   networkSocket <- getEnv "CARDANO_NODE_SOCKET_PATH"
   network <- getEnv "NETWORK"
-  snetworkMagic <- getEnv "NETWORK_MAGIC"
-  let networkMagic = read snetworkMagic :: Int
+  sNetworkMagic <- getEnv "NETWORK_MAGIC"
+  let networkMagic = read sNetworkMagic :: Int
   networkEra <- getEnv "NETWORK_ERA"
   -- mint owner, policy and token
   let ownerName = capitalized $ owner sendOptions
@@ -98,15 +98,15 @@ sendToken (Options sendOptions dstTypeAddress) = do
       policiesPath = getPolicyPath addressesPath ownerName policyName policiesFolder
       
   -- source address and signing key
-  msrcAddress <- getSrcAddress ownerName addressesPath
-  let skeyFile = getSkeyFile addressesPath Payment ownerName
+  mSrcAddress <- getSrcAddress ownerName addressesPath
+  let sKeyFile = getSKeyFile addressesPath Payment ownerName
 
   -- destination address
-  mdstAddress <- getDstAddress dstTypeAddress addressesPath
+  mDstAddress <- getDstAddress dstTypeAddress addressesPath
 
-  Control.Monad.when (isJust msrcAddress && isJust mdstAddress) $ do
+  Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
     let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = "--" ++ networkEra, networkEnv = networkSocket }
-    rc <- doSend bNetwork ownerName msrcAddress skeyFile mdstAddress adaAmount policyName policiesPath (Just tokenName) tokenAmount
+    rc <- doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount policyName policiesPath (Just tokenName) tokenAmount
     unless rc $ putStrLn "Nothing sent"
 
 
@@ -146,11 +146,11 @@ getDstAddress (DstFile dstFile) addressesPath = do
 
 -- send amount of token from owner for destination address on given network
 doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> String -> String -> Maybe String -> Int -> IO Bool
-doSend bNetwork ownerName msrcAddress skeyFile mdstAddress adaAmount policyName policiesPath mtokenName tokenAmount
-  | isNothing msrcAddress = do
+doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount policyName policiesPath mTokenName tokenAmount
+  | isNothing mSrcAddress = do
       putStrLn $  "No address found for " ++ ownerName
       return False
-  | isNothing mtokenName = do
+  | isNothing mTokenName = do
       putStrLn "No token name provided"
       return False
   | tokenAmount == 0 = do
@@ -163,29 +163,29 @@ doSend bNetwork ownerName msrcAddress skeyFile mdstAddress adaAmount policyName 
     saveProtocolParameters bNetwork protocolParametersFile
 
     -- 2. Get UTXOs from our wallet
-    utxo <- getUtxoFromWallet bNetwork (fromJust msrcAddress)
+    utxo <- getUtxoFromWallet bNetwork (fromJust mSrcAddress)
 
     -- 3. get policy for our token
-    let mtokenId =  getTokenIdFromName (fromJust mtokenName) (tokens utxo)
-    if isJust mtokenId then do
-      let policyId = getPolicyIdFromTokenId (fromJust mtokenId)
+    let mTokenId =  getTokenIdFromName (fromJust mTokenName) (tokens utxo)
+    if isJust mTokenId then do
+      let policyId = getPolicyIdFromTokenId (fromJust mTokenId)
       -- 4. Calculate tokens balance
       let balances = calculateTokensBalance(tokens utxo)
 
       -- 5. Calculate fees for the transaction
-      minFee <- calculateSendFees bNetwork (fromJust msrcAddress) (fromJust mdstAddress) adaAmount mtokenName tokenAmount policyId utxo protocolParametersFile
+      minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount mTokenName tokenAmount policyId utxo protocolParametersFile
       -- print (fromJust minFee)
 
       when (isJust minFee) $ do
         -- 6. Build actual transaction including correct fees
-        let okFeeFile = getTransactionFile mtokenName OkFee
-        rc <- buildSendTransaction bNetwork (fromJust msrcAddress) (fromJust mdstAddress) adaAmount mtokenName tokenAmount policyId utxo (fromJust minFee) okFeeFile
+        let okFeeFile = getTransactionFile mTokenName OkFee
+        rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount mTokenName tokenAmount policyId utxo (fromJust minFee) okFeeFile
         unless rc $ do 
           putStrLn "Failed to build transaction"
 
         -- 7. Sign the transaction
-        let signFile = getTransactionFile mtokenName Sign
-        signSendTransaction bNetwork skeyFile okFeeFile signFile
+        let signFile = getTransactionFile mTokenName Sign
+        signSendTransaction bNetwork sKeyFile okFeeFile signFile
 
         -- 8. Submit the transaction to the blockchain
         rc <- submitTransaction bNetwork signFile
@@ -193,5 +193,5 @@ doSend bNetwork ownerName msrcAddress skeyFile mdstAddress adaAmount policyName 
         -- putStrLn signFile
       return True
     else do
-      putStrLn $ "Address " ++ fromJust msrcAddress ++ " has no token " ++ fromJust mtokenName
+      putStrLn $ "Address " ++ fromJust mSrcAddress ++ " has no token " ++ fromJust mTokenName
       return False

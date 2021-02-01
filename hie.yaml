@@ -1,2 +1,49 @@
 cradle:
   stack:
+    - path: "./src"
+      component: "cato:lib"
+
+    - path: "./app/address-info.hs"
+      component: "cato:exe:address-info"
+
+    - path: "./app/Paths_cato.hs"
+      component: "cato:exe:address-info"
+
+    - path: "./app/burn-token.hs"
+      component: "cato:exe:burn-token"
+
+    - path: "./app/Paths_cato.hs"
+      component: "cato:exe:burn-token"
+
+    - path: "./app/create-address.hs"
+      component: "cato:exe:create-address"
+
+    - path: "./app/Paths_cato.hs"
+      component: "cato:exe:create-address"
+
+    - path: "./app/create-policy.hs"
+      component: "cato:exe:create-policy"
+
+    - path: "./app/Paths_cato.hs"
+      component: "cato:exe:create-policy"
+
+    - path: "./app/mint-token.hs"
+      component: "cato:exe:mint-token"
+
+    - path: "./app/Paths_cato.hs"
+      component: "cato:exe:mint-token"
+
+    - path: "./app/policy-info.hs"
+      component: "cato:exe:policy-info"
+
+    - path: "./app/Paths_cato.hs"
+      component: "cato:exe:policy-info"
+
+    - path: "./app/send-token.hs"
+      component: "cato:exe:send-token"
+
+    - path: "./app/Paths_cato.hs"
+      component: "cato:exe:send-token"
+
+    - path: "./test"
+      component: "cato:test:cato-test"

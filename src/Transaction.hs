@@ -10,8 +10,8 @@ import Data.Maybe ( isNothing, isJust, fromJust, fromMaybe )
 import Data.List ( delete, foldl', intercalate, isSuffixOf, find )
 import Data.Aeson (decode)
 import qualified Data.ByteString.Lazy.Char8 as B
-import Tokutils ( Address, AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv),
-  calculateTokensBalance, getAddress, getAddressFile, getVkeyFile, getProtocolKeyDeposit, Policy(Policy, policyScript, policyVkey, policySkey, policyId), uglyParse )
+import TokenUtils ( Address, AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv),
+  calculateTokensBalance, getAddress, getAddressFile, getVKeyFile, getProtocolKeyDeposit, Policy(Policy, policyScript, policyVKey, policySKey, policyId), uglyParse )
 
 data Utxo = Utxo {
     raw :: String
@@ -59,7 +59,7 @@ checkSendTransactionAmount adaAmount token tokenAmount transactionType policyId 
     putStrLn "No utxo found"
     return False
   | isNothing keyDeposit = do
-    putStrLn "No keydeposit value found"
+    putStrLn "No keyDeposit value found"
     return False    
   | adaAmount /=0 && adaAmount * 1000000 < fromJust keyDeposit && fee /= 0 = do
     putStrLn $ "To few lovelace for transaction " ++ show adaAmount ++ " ADA ; you need at least " ++ show (fromJust keyDeposit) ++ " lovelace for transaction"
@@ -87,8 +87,8 @@ checkSendTransactionBalance tokenValues assetId fee lovelaceAmount tokenAmount t
     return(True, balances2)
 
 -- join key value in string
-joinkv :: String -> (String,Int) -> String
-joinkv acc (key, value) = acc ++ " +" ++ show value ++ " " ++ key
+joinKV :: String -> (String,Int) -> String
+joinKV acc (key, value) = acc ++ " +" ++ show value ++ " " ++ key
 
 -- build transaction
 buildTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> Maybe String -> Int -> String -> Utxo -> [(String,Int)] -> Int -> FilePath -> IO Bool 
@@ -115,13 +115,13 @@ buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmoun
     let assetId = policyId ++ "." ++ fromMaybe "" token
     (rc, balances) <- checkSendTransactionBalance (tokens utxo) assetId fee lovelaceAmount tokenAmount transactionType
     if rc then do
-      let txOutSrc = foldl' joinkv srcAddress (reverse balances)
+      let txOutSrc = foldl' joinKV srcAddress (reverse balances)
       let txOutDst = dstAddress ++ "+" ++ show lovelaceAmount ++ " " ++ adaId ++ (if isNothing token then "" else "+" ++ show tokenAmount ++ " " ++ assetId)
       ttl <- calculateTTL bNetwork
       let runParams = ["transaction", "build-raw", networkEra bNetwork, "--fee", show fee] ++ buildTxIn (utxos utxo) ++
             ["--ttl", show ttl, "--tx-out", txOutDst, "--tx-out", txOutSrc] ++ 
             (if transactionType == Mint then ["--mint", show tokenAmount ++" "++assetId] else []) ++ ["--out-file", outFile] 
-      (_, Just hout, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
+      (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
       r <- waitForProcess ph
       return True
     else
@@ -163,12 +163,12 @@ buildBurnTransaction bNetwork srcAddress token tokenAmount policyId utxo balance
     let adaId = "lovelace"
     (rc, balances) <- checkSendTransactionBalance (tokens utxo) (fromJust assetId) fee 0 tokenAmount Burn
     if rc then do
-      let txOutSrc = foldl' joinkv srcAddress (reverse balances)
+      let txOutSrc = foldl' joinKV srcAddress (reverse balances)
       ttl <- calculateTTL bNetwork
       let runParams = ["transaction", "build-raw", networkEra bNetwork, "--fee", show fee] ++ buildTxIn (utxos utxo) ++
             ["--ttl", show ttl, "--tx-out", txOutSrc] ++ 
             ["--mint", show (-tokenAmount) ++" "++fromJust assetId] ++ ["--out-file", outFile]
-      (_, Just hout, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
+      (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
       r <- waitForProcess ph
       return True
     else
@@ -203,9 +203,9 @@ calculateFees transactionType bNetwork srcAddress dstAddress adaAmount token tok
   else do
     let runParams = ["transaction", "calculate-min-fee", "--tx-body-file", draftFile, "--tx-in-count", show(nbUtxos utxo),
           "--tx-out-count", "1", "--witness-count", "1", "--byron-witness-count", "0", "--protocol-params-file", protparamsFile]
-    (_, Just hout, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
+    (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
     r <- waitForProcess ph
-    rc <- hGetContents hout
+    rc <- hGetContents hOut
     let mintFee = read(head (words rc))::Int
     return (Just mintFee)   
 
@@ -227,32 +227,32 @@ calculateTTL :: BlockchainNetwork -> IO Int
 calculateTTL bNetwork = do
   let forwardSlot=300
   let runParams = ["query", "tip", network bNetwork, show(networkMagic bNetwork)]
-  (_, Just hout, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
+  (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
   r <- waitForProcess ph
-  jsonData <- hGetContents hout
+  jsonData <- hGetContents hOut
   let slot = forwardSlot + read(uglyParse jsonData "slotNo")::Int 
   return slot
 
 -- create address for owner
 createAddress :: BlockchainNetwork -> AddressType -> FilePath -> String -> IO (Maybe Address) 
 createAddress bNetwork addressType addressesPath ownerName = do
-  let vkFile = getVkeyFile addressesPath addressType ownerName
-  boolvk <- doesFileExist vkFile
-  if not boolvk then do
+  let vkFile = getVKeyFile addressesPath addressType ownerName
+  boolVK <- doesFileExist vkFile
+  if not boolVK then do
     putStrLn $ "verification key missing for " ++ ownerName
     return Nothing
   else do
     let addrFile = getAddressFile addressesPath addressType ownerName
-    boolad <- doesFileExist addrFile
-    if boolad then do
+    boolAddress <- doesFileExist addrFile
+    if boolAddress then do
       putStrLn $ "address already exists for " ++ ownerName
       getAddress addrFile
     else do
       let netName = network bNetwork
       let netMagic = networkMagic bNetwork
-      let saddressType = if addressType == Payment then "address" else "stake-address"
-      let saddressPrefix = if addressType == Payment then "payment" else "stake"
-      let runParams = [saddressType, "build", netName, show netMagic, "--" ++ saddressPrefix ++ "-verification-key-file", vkFile, "--out-file", addrFile]
+      let sAddressType = if addressType == Payment then "address" else "stake-address"
+      let sAddressPrefix = if addressType == Payment then "payment" else "stake"
+      let runParams = [sAddressType, "build", netName, show netMagic, "--" ++ sAddressPrefix ++ "-verification-key-file", vkFile, "--out-file", addrFile]
       (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
       r <- waitForProcess ph
       getAddress addrFile
@@ -265,9 +265,9 @@ getUtxoFromWallet bNetwork address = do
   let netEra = networkEra bNetwork
   let envParam = Just [("CARDANO_NODE_SOCKET_PATH", networkEnv bNetwork)]
   let runParams = ["query", "utxo", netName, show netMagic, netEra, "--address", address]
-  (_, Just hout, _, ph) <- createProcess (proc "cardano-cli" runParams ) { env = envParam } {std_out = CreatePipe }
+  (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams ) { env = envParam } {std_out = CreatePipe }
   r <- waitForProcess ph
-  raw <- hGetContents hout
+  raw <- hGetContents hOut
 
   -- split lines and remove first to lines
   let txList = drop 2  . lines $ raw
@@ -276,8 +276,8 @@ getUtxoFromWallet bNetwork address = do
   let utxos = fmap (intercalate "#" ) rawUtxos
 -- get tokens from end of lists and build tuples (token, amount)
   let rawTokens = [ drop 2 (words tx) | tx <- txList]
-  let ltokens = fmap (filter (/= "+")) rawTokens
-  let tokens = concatMap parseTokens ltokens
+  let lTokens = fmap (filter (/= "+")) rawTokens
+  let tokens = concatMap parseTokens lTokens
   return Utxo {raw=raw, utxos=utxos, nbUtxos= length utxos, tokens=tokens}
 
 -- parse transactions list
@@ -288,16 +288,16 @@ parseTokens (x:y:xs) = (y,read x::Int):parseTokens xs
 
 -- sign transaction
 signTransaction :: TransactionType -> BlockchainNetwork -> FilePath -> Maybe Policy -> FilePath -> FilePath -> IO ()
-signTransaction Send bNetwork skeyFile _ okFeeFile signFile = do
-  let runParams = ["transaction", "sign", network bNetwork, show(networkMagic bNetwork), "--signing-key-file", skeyFile,
+signTransaction Send bNetwork sKeyFile _ okFeeFile signFile = do
+  let runParams = ["transaction", "sign", network bNetwork, show(networkMagic bNetwork), "--signing-key-file", sKeyFile,
         "--tx-body-file", okFeeFile, "--out-file", signFile]
-  (_, Just hout, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
+  (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
   r <- waitForProcess ph
   return ()
-signTransaction _ bNetwork skeyFile (Just policy) okFeeFile signFile = do
-  let runParams = ["transaction", "sign", network bNetwork, show(networkMagic bNetwork), "--signing-key-file", skeyFile,
-        "--signing-key-file", policySkey policy, "--script-file", policyScript policy, "--tx-body-file", okFeeFile, "--out-file", signFile]
-  (_, Just hout, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
+signTransaction _ bNetwork sKeyFile (Just policy) okFeeFile signFile = do
+  let runParams = ["transaction", "sign", network bNetwork, show(networkMagic bNetwork), "--signing-key-file", sKeyFile,
+        "--signing-key-file", policySKey policy, "--script-file", policyScript policy, "--tx-body-file", okFeeFile, "--out-file", signFile]
+  (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
   r <- waitForProcess ph
   return ()
 signTransaction _ _ _ _ _ _ = do
@@ -306,21 +306,21 @@ signTransaction _ _ _ _ _ _ = do
 
 -- sign burn transaction
 signBurnTransaction :: BlockchainNetwork -> FilePath -> Policy -> FilePath -> FilePath -> IO ()
-signBurnTransaction bNetwork skeyFile policy = signTransaction Burn bNetwork skeyFile (Just policy)
+signBurnTransaction bNetwork sKeyFile policy = signTransaction Burn bNetwork sKeyFile (Just policy)
 
 -- sign mint transaction
 signMintTransaction :: BlockchainNetwork -> FilePath -> Policy -> FilePath -> FilePath -> IO ()
-signMintTransaction bNetwork skeyFile policy = signTransaction Mint bNetwork skeyFile (Just policy)
+signMintTransaction bNetwork sKeyFile policy = signTransaction Mint bNetwork sKeyFile (Just policy)
 
 -- sign send transaction
 signSendTransaction :: BlockchainNetwork -> FilePath -> FilePath -> FilePath -> IO ()
-signSendTransaction bNetwork skeyFile = signTransaction Send bNetwork skeyFile Nothing
+signSendTransaction bNetwork sKeyFile = signTransaction Send bNetwork sKeyFile Nothing
 
 -- submit signed transaction on the network
 submitTransaction :: BlockchainNetwork -> FilePath -> IO Bool
 submitTransaction bNetwork signFile = do
   let envParam = Just [("CARDANO_NODE_SOCKET_PATH", networkEnv bNetwork)]
   let runParams = ["transaction", "submit", network bNetwork, show(networkMagic bNetwork), "--tx-file", signFile]
-  (_, Just hout, _, ph) <- createProcess (proc "cardano-cli" runParams) { env = envParam }{ std_out = CreatePipe }
+  (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams) { env = envParam }{ std_out = CreatePipe }
   r <- waitForProcess ph
   return (r == ExitSuccess)

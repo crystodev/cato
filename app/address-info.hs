@@ -5,7 +5,7 @@ import Data.Maybe ( isNothing, fromJust )
 import Baseutils ( capitalized )
 import Control.Monad (void, when)
 import Configuration.Dotenv (loadFile, defaultConfig)
-import Tokutils ( Address, AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
+import TokenUtils ( Address, AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
   calculateTokensBalance, getAddress, getAddressFile )
 import Transaction ( getUtxoFromWallet, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 import Text.Printf ( printf )

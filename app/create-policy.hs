@@ -3,7 +3,7 @@ import Options.Applicative
 import Data.Semigroup ((<>))
 import Data.Maybe ( isJust, fromJust )
 import Baseutils ( capitalized )
-import Tokutils ( createPolicy, getPolicyPath, getPolicyId )
+import TokenUtils ( createPolicy, getPolicyPath, getPolicyId )
 import Control.Monad (void)
 import Configuration.Dotenv (loadFile, defaultConfig)
 
