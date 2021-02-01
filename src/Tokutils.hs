@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 module Tokutils ( buildPolicyName, createKeypair, createPolicy, Address, AddressType(Payment, Stake), 
   BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
   calculateTokensBalance, getPolicy, getPolicyPath, getPolicyId, getPolicyIdFromTokenId, Policy(..), 
@@ -7,15 +8,15 @@ module Tokutils ( buildPolicyName, createKeypair, createPolicy, Address, Address
 
 import System.Directory ( createDirectoryIfMissing, doesFileExist)
 import System.FilePath ( takeDirectory )
-import System.IO ( hGetContents, readFile)
+import System.IO ( hGetContents )
 import System.Process ( createProcess, proc, std_out, StdStream(CreatePipe), waitForProcess )
-import Data.Aeson (decode, encode, Object)
+import Data.Aeson (FromJSON, ToJSON, toEncoding, genericToEncoding, decode, encode)
 import Data.Aeson.TH(deriveJSON, defaultOptions, Options(fieldLabelModifier))
 import GHC.Generics
-import qualified Data.ByteString.Lazy.Char8 as B
+import qualified Data.ByteString.Lazy.Char8 as B8
 import qualified Data.Map as M
-import Control.Monad(when, unless)
-import Data.Maybe ( isNothing, isJust, fromJust )
+import Control.Monad( unless)
+import Data.Maybe ( isJust, fromJust )
 import Data.List.Split ( splitOn )
 import Data.List (isPrefixOf)
 
@@ -37,6 +38,7 @@ data Policy = Policy
   , policySkey   :: FilePath
   , tokensPath   :: FilePath
   , policyId     :: String
+  , policyName   :: String
   }
   deriving Show
 
@@ -49,12 +51,14 @@ buildPolicyName policyName _ = policyName
 
 -- build Policy full file names
 buildPolicyPath :: String -> String -> Policy
-buildPolicyPath policyName policyPath = Policy 
-  (policyPath ++ "policy.script")
-  (policyPath ++ "policy.vkey")
-  (policyPath ++ "policy.skey")
-  (policyPath ++ "tokens/")
-  ""
+buildPolicyPath policyName policyPath = Policy {
+    policyScript = policyPath ++ "policy.script"
+  , policyVkey = policyPath ++ "policy.vkey"
+  , policySkey = policyPath ++ "policy.skey"
+  , tokensPath = policyPath ++ "tokens/"
+  , policyId =  ""
+  , policyName = ""
+  }
 
 -- create a Cardano Policy
 createPolicy :: String -> String -> IO (Maybe Policy)
@@ -76,14 +80,14 @@ createPolicy policyName policyPath = do
     let keyhash = filter (/= '\n') keyh
     -- create policy script
     let myPolicyScript = PolicyScript { keyHash = keyhash, keyType = "sig"}
-    B.writeFile (policyScript policy) (encode myPolicyScript)
+    B8.writeFile (policyScript policy) (encode myPolicyScript)
   else do
     putStrLn $ "Policy exists : no policy created for " ++ policyName
   -- retrieve policy script
   let runParams3 =["transaction", "policyid", "--script-file", policyScript policy]
   (_, Just hout, _, _) <- createProcess (proc "cardano-cli" runParams3){ std_out = CreatePipe }
   pId <- hGetContents hout 
-  return (Just policy { policyId = filter (/= '\n') pId} )
+  return (Just (policy { policyId = filter (/= '\n') pId, policyName = policyName}::Policy ))
 
 -- | get Policy Folder
 getPolicyPath:: FilePath -> String -> String -> FilePath -> FilePath
@@ -108,23 +112,71 @@ getPolicy policyName policyPath = do
     (_, Just hout, _, ph) <- createProcess (proc "cardano-cli" ["transaction", "policyid", "--script-file", policyScript policy]){ std_out = CreatePipe }
     r <- waitForProcess ph
     policyId <- hGetContents hout
-    return $ Just $ Policy (policyScript policy) (policyVkey policy) (policySkey policy) (tokensPath policy) (filter (/= '\n') policyId)
+    return $ Just $ Policy (policyScript policy) (policyVkey policy) (policySkey policy) (tokensPath policy) (filter (/= '\n') policyId) policyName
   else
     return Nothing
+
+-- token info record
+data TokenInfo = TokenInfo {
+  infoVersion :: Float
+, name :: String
+, id :: String
+, policyName :: String
+, policyId :: String
+} deriving (Generic, Show)
+
+tokenInfoVersion = 0.1 :: Float
+
+instance FromJSON TokenInfo
+
+instance ToJSON TokenInfo where
+  toEncoding = genericToEncoding defaultOptions
 
 -- record token minting
 recordToken :: Policy -> String -> IO ()
 recordToken policy tokenName = do
   let tokenFile = tokensPath policy ++ tokenName
-  print tokenFile
   rc <- doesFileExist tokenFile
-  print rc
   unless rc $ do
-    print (policyId policy ++ "." ++ tokenName)
-    writeFile tokenFile (policyId policy ++ "." ++ tokenName)
+    let id = policyId (policy:: Policy)  ++ "." ++ tokenName
+    let tokenInfo = TokenInfo { infoVersion = tokenInfoVersion, name = tokenName, id = id, policyName = policyName (policy:: Policy), policyId = policyId (policy:: Policy)}
+    B8.writeFile tokenFile (encode tokenInfo)
     
 -- protocols helpers ------------------------------------------------------
 
+-- protocol parameters json structure
+data ProtocolVersion = ProtocolVersion {
+  minor :: Int
+, major :: Int
+}  deriving (Generic)
+instance FromJSON ProtocolVersion
+
+newtype ExtraEntropy = ExtraEntropy {
+  tag :: String
+}  deriving (Generic)
+instance FromJSON ExtraEntropy
+
+data ProtocolParams = ProtocolParams {
+  protocolVersion :: ProtocolVersion
+, minUTxOValue :: Int
+, decentralisationParam :: Int
+, maxTxSize :: Int
+, minPoolCost :: Int
+, minFeeA :: Int
+, maxBlockBodySize :: Int
+, minFeeB :: Int
+, eMax :: Int
+, extraEntropy :: ExtraEntropy
+, maxBlockHeaderSize :: Int
+, keyDeposit :: Int
+, nOpt :: Int
+, rho :: Float
+, tau :: Float
+, a0 :: Float
+} deriving (Generic)
+instance FromJSON ProtocolParams
+
+-- blockchain parameters
 data BlockchainNetwork = BlockchainNetwork 
   {
     network :: String
@@ -149,9 +201,10 @@ getProtocolKeyDeposit bNetwork = do
   (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" ["query", "protocol-parameters", netName, show netMagic, netEra]){ std_out = CreatePipe }
   r <- waitForProcess ph
   jsonData <- hGetContents rc
-
-  let keyDeposit = read (uglyParse jsonData "keyDeposit")::Int
-  return (Just keyDeposit)
+  let protocolParams = decode (B8.pack jsonData) :: Maybe ProtocolParams
+  if isJust protocolParams then return $ Just $ keyDeposit $ fromJust protocolParams else return Nothing
+--  let keyDeposit = read (uglyParse jsonData "keyDeposit")::Int
+--  return (Just keyDeposit)
 
 -- get protocol parameters
 saveProtocolParameters :: BlockchainNetwork -> FilePath -> IO Bool
