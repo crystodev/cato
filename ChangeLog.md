@@ -1,3 +1,3 @@
-# Changelog for cato
+# Changelog for Cato
 
-## Unreleased changes
+Initial release
