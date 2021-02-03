@@ -9,9 +9,9 @@ import System.Process ( createProcess, env, proc, std_out, StdStream(CreatePipe)
 import Data.Maybe ( isNothing, isJust, fromJust, fromMaybe )
 import Data.List ( delete, foldl', intercalate, isSuffixOf, find )
 import Data.Aeson (decode)
-import qualified Data.ByteString.Lazy.Char8 as B
+import qualified Data.ByteString.Lazy.Char8 as B8
 import TokenUtils ( Address, AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv),
-  calculateTokensBalance, getAddress, getAddressFile, getVKeyFile, getProtocolKeyDeposit, Policy(Policy, policyScript, policyVKey, policySKey, policyId), uglyParse )
+  calculateTokensBalance, getAddress, getAddressFile, getVKeyFile, getProtocolKeyDeposit, Policy(Policy, policyScript, policyVKey, policySKey, policyId), Tip(Tip, slotNo) )
 
 data Utxo = Utxo {
     raw :: String
@@ -22,13 +22,12 @@ data Utxo = Utxo {
 
 data TransactionType = Burn | Mint | Send  deriving (Eq, Show)
 
-
 -- utilities ----------------
 data FileType = Draft | OkFee | Sign
 
 getTransactionFileExt :: FileType -> String
-getTransactionFileExt Draft = ".txbody.draft"
-getTransactionFileExt OkFee = ".txbody.ok-fee"
+getTransactionFileExt Draft = ".txBody.draft"
+getTransactionFileExt OkFee = ".txBody.ok-fee"
 getTransactionFileExt Sign = ".tx.sign"
 
 getTransactionFile :: Maybe String -> FileType -> FilePath 
@@ -118,12 +117,15 @@ buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmoun
       let txOutSrc = foldl' joinKV srcAddress (reverse balances)
       let txOutDst = dstAddress ++ "+" ++ show lovelaceAmount ++ " " ++ adaId ++ (if isNothing token then "" else "+" ++ show tokenAmount ++ " " ++ assetId)
       ttl <- calculateTTL bNetwork
-      let runParams = ["transaction", "build-raw", networkEra bNetwork, "--fee", show fee] ++ buildTxIn (utxos utxo) ++
-            ["--ttl", show ttl, "--tx-out", txOutDst, "--tx-out", txOutSrc] ++ 
-            (if transactionType == Mint then ["--mint", show tokenAmount ++" "++assetId] else []) ++ ["--out-file", outFile] 
-      (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
-      r <- waitForProcess ph
-      return True
+      if isJust ttl then do
+        let runParams = ["transaction", "build-raw", networkEra bNetwork, "--fee", show fee] ++ buildTxIn (utxos utxo) ++
+              ["--ttl", show (fromJust ttl), "--tx-out", txOutDst, "--tx-out", txOutSrc] ++ 
+              (if transactionType == Mint then ["--mint", show tokenAmount ++" "++assetId] else []) ++ ["--out-file", outFile] 
+        (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
+        r <- waitForProcess ph
+        return True
+      else
+        return False
     else
       return False
   else
@@ -165,12 +167,15 @@ buildBurnTransaction bNetwork srcAddress token tokenAmount policyId utxo balance
     if rc then do
       let txOutSrc = foldl' joinKV srcAddress (reverse balances)
       ttl <- calculateTTL bNetwork
-      let runParams = ["transaction", "build-raw", networkEra bNetwork, "--fee", show fee] ++ buildTxIn (utxos utxo) ++
-            ["--ttl", show ttl, "--tx-out", txOutSrc] ++ 
-            ["--mint", show (-tokenAmount) ++" "++fromJust assetId] ++ ["--out-file", outFile]
-      (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
-      r <- waitForProcess ph
-      return True
+      if isJust ttl then do
+        let runParams = ["transaction", "build-raw", networkEra bNetwork, "--fee", show fee] ++ buildTxIn (utxos utxo) ++
+              ["--ttl", show (fromJust ttl), "--tx-out", txOutSrc] ++ 
+              ["--mint", show (-tokenAmount) ++" "++fromJust assetId] ++ ["--out-file", outFile]
+        (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
+        r <- waitForProcess ph
+        return True
+      else
+        return False
     else
       return False
   else
@@ -194,7 +199,7 @@ buildSendTransaction bNetwork srcAddress dstAddress adaAmount token tokenAmount 
 
 -- calculate fee for transaction
 calculateFees :: TransactionType -> BlockchainNetwork -> Address  -> Address -> Int -> Maybe String -> Int -> String -> Utxo -> [(String,Int)] -> FilePath -> IO (Maybe Int)
-calculateFees transactionType bNetwork srcAddress dstAddress adaAmount token tokenAmount policyId utxo balances protparamsFile = do
+calculateFees transactionType bNetwork srcAddress dstAddress adaAmount token tokenAmount policyId utxo balances protParamsFile = do
   let draftFile = getTransactionFile token Draft
   bool <- buildTransaction transactionType bNetwork srcAddress dstAddress adaAmount token tokenAmount policyId utxo balances 0 draftFile
   if not bool then do
@@ -202,7 +207,7 @@ calculateFees transactionType bNetwork srcAddress dstAddress adaAmount token tok
     return Nothing
   else do
     let runParams = ["transaction", "calculate-min-fee", "--tx-body-file", draftFile, "--tx-in-count", show(nbUtxos utxo),
-          "--tx-out-count", "1", "--witness-count", "1", "--byron-witness-count", "0", "--protocol-params-file", protparamsFile]
+          "--tx-out-count", "1", "--witness-count", "1", "--byron-witness-count", "0", "--protocol-params-file", protParamsFile]
     (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
     r <- waitForProcess ph
     rc <- hGetContents hOut
@@ -223,15 +228,15 @@ calculateSendFees bNetwork srcAddress dstAddress adaAmount token tokenAmount pol
   calculateFees Send bNetwork srcAddress dstAddress adaAmount token tokenAmount policyId utxo []
 
 -- calculate network TTL
-calculateTTL :: BlockchainNetwork -> IO Int
+calculateTTL :: BlockchainNetwork -> IO (Maybe Int)
 calculateTTL bNetwork = do
   let forwardSlot=300
   let runParams = ["query", "tip", network bNetwork, show(networkMagic bNetwork)]
   (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
   r <- waitForProcess ph
   jsonData <- hGetContents hOut
-  let slot = forwardSlot + read(uglyParse jsonData "slotNo")::Int 
-  return slot
+  let tip = decode (B8.pack jsonData) :: Maybe Tip
+  if isJust tip then return $ Just $ slotNo (fromJust tip) + forwardSlot  else return Nothing
 
 -- create address for owner
 createAddress :: BlockchainNetwork -> AddressType -> FilePath -> String -> IO (Maybe Address) 

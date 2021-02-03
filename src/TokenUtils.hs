@@ -4,7 +4,7 @@
 module TokenUtils ( buildPolicyName, createKeyPair, createPolicy, Address, AddressType(Payment, Stake), 
   BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
   calculateTokensBalance, getPolicy, getPolicyPath, getPolicyId, getPolicyIdFromTokenId, Policy(..), 
-  getProtocolKeyDeposit, saveProtocolParameters, getAddress, getAddressFile, getSKeyFile, getVKeyFile, recordToken, uglyParse ) where
+  getProtocolKeyDeposit, saveProtocolParameters, getAddress, getAddressFile, getSKeyFile, getVKeyFile, recordToken, Tip(..) ) where
 
 import System.Directory ( createDirectoryIfMissing, doesFileExist)
 import System.FilePath ( takeDirectory )
@@ -186,12 +186,14 @@ data BlockchainNetwork = BlockchainNetwork
   }
   deriving Show
 
--- get keyDeposit parameter from protocol
-uglyParse :: String -> String -> String
-uglyParse jsonData key = do
-  let ls = splitOn "," (filter (`notElem` "\n\" {}") jsonData)
-  last $ splitOn ":" (head ( filter (isPrefixOf key) ls))
+data Tip = Tip {
+  blockNo :: Int
+, headerHash :: String
+, slotNo :: Int
+} deriving (Generic)
+instance FromJSON Tip
 
+-- get keyDeposit parameter from protocol
 getProtocolKeyDeposit :: BlockchainNetwork -> IO (Maybe Int)
 getProtocolKeyDeposit bNetwork = do
   let netName = network bNetwork
@@ -203,8 +205,6 @@ getProtocolKeyDeposit bNetwork = do
   jsonData <- hGetContents rc
   let protocolParams = decode (B8.pack jsonData) :: Maybe ProtocolParams
   if isJust protocolParams then return $ Just $ keyDeposit $ fromJust protocolParams else return Nothing
---  let keyDeposit = read (uglyParse jsonData "keyDeposit")::Int
---  return (Just keyDeposit)
 
 -- get protocol parameters
 saveProtocolParameters :: BlockchainNetwork -> FilePath -> IO Bool
