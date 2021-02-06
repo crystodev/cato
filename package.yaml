@@ -4,15 +4,15 @@ github:              "crystodev/cato"
 license:             BSD3
 author:              "Crystodev"
 maintainer:          "example@example.com"
-copyright:           "Crystodev"
+copyright:           "2021 Crystodev"
 
 extra-source-files:
 - README.md
 - ChangeLog.md
 
 # Metadata used when publishing your package
-# synopsis:            Short description of your package
-# category:            Web
+# synopsis:            Cardano Native Token Tools
+# category:            Blockchain
 
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
@@ -88,6 +88,16 @@ executables:
 
   policy-info:
     main:                policy-info.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cato
+
+  send-ada:
+    main:                send-ada.hs
     source-dirs:         app
     ghc-options:
     - -threaded

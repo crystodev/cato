@@ -1,59 +1,40 @@
 import System.Environment ( getEnv, lookupEnv )
-import System.Directory ( doesFileExist)
 import Configuration.Dotenv (loadFile, defaultConfig)
 import Options.Applicative
 import Data.Semigroup ((<>))
 import Control.Monad (void, when, unless)
-import Data.Maybe ( isJust, fromJust )
+import Data.Maybe ( isJust, isNothing, fromJust, fromMaybe )
 import Baseutils ( capitalized )
-import TokenUtils ( Address, AddressType(Payment), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
-  buildPolicyName, calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyPath, Policy(Policy, policyId ), getTokenPath, getSKeyFile, 
-  recordToken, saveProtocolParameters )
-import Transaction ( buildMintTransaction, calculateMintFees, getTransactionFile, FileType(..), getUtxoFromWallet, signMintTransaction,
+import TokenUtils ( Address, AddressType(Payment), buildPolicyName, BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
+  calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyIdFromTokenId, getPolicyPath, Policy(Policy, policyId), getSKeyFile, saveProtocolParameters )
+import Transaction ( buildSendTransaction, calculateSendFees, getTransactionFile, FileType(..), getUtxoFromWallet, getTokenIdFromName, signSendTransaction,
   submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 
 type Owner = String
 -- parsing options
-data MintOptions = MintOptions 
+data SendOptions = SendOptions 
   { owner :: String
-  , policy :: String 
-  , token :: String 
-  , amount :: Int 
-  , createToken :: Bool
+  , ada :: Int
   } deriving (Show)
 data DstTypeAddress = DstName String 
                     | DstAddress String
                     | DstFile FilePath 
                     deriving (Eq, Show)
 
-data Options = Options MintOptions DstTypeAddress
+data Options = Options SendOptions DstTypeAddress
 
-parseMint :: Parser MintOptions
-parseMint = MintOptions
+parseSend :: Parser SendOptions
+parseSend = SendOptions
   <$> strOption
-  ( long "owner"
-  <> short 'o'
-  <> metavar "OWNER"
-  <> help "address owner name" )
-  <*> strOption
-  ( long "policy"
-  <> short 'p'
-  <> metavar "POLICY"
-  <> help "token policy" )
-  <*> strOption
-  ( long "token"
-  <> short 't'
-  <> metavar "TOKEN"
-  <> help "token" )
+    ( long "owner"
+    <> short 'o'
+    <> metavar "OWNER"
+    <> help "address owner name" )
   <*> option auto
-  ( long "amount"
-  <> short 'm'
-  <> metavar "AMOUNT"
-  <> help "tokens amount" )
-  <*> switch
-  ( short 'c'
-  <> long "create-token"
-  <> help "create token if it does not exist")
+    ( long "ada"
+    <> metavar "ADA AMOUNT"
+    <> help "ada amount" 
+    <> value 0)
 
 parseDstName :: Parser DstTypeAddress
 parseDstName = DstName <$> strOption ( long "destination" <> short 'd' <> metavar "DESTINATION NAME" <> help "name of destination address owner" )
@@ -68,19 +49,19 @@ parseDstTypeAddress :: Parser DstTypeAddress
 parseDstTypeAddress = parseDstName <|> parseDstAddress <|> parseDstFile
 
 parseOptions :: Parser Options
-parseOptions = Options <$> parseMint <*> parseDstTypeAddress
+parseOptions = Options <$> parseSend <*> parseDstTypeAddress
 
 main :: IO ()
-main = mintToken =<< execParser opts
+main = sendToken =<< execParser opts
   where
     opts = info (parseOptions <**> helper)
       ( fullDesc
-     <> progDesc "Mint amount Token for address with signing key."
-     <> header "mint-token - a simple minting token tool" )
+     <> progDesc "Send amount of Ada from owner to destination."
+     <> header "send-ada - a simple send ada tool" )
 
--- mint token
-mintToken :: Options -> IO ()
-mintToken (Options mintOptions dstTypeAddress) = do
+-- send token
+sendToken :: Options -> IO ()
+sendToken (Options sendOptions dstTypeAddress) = do
   loadFile defaultConfig
   addressesPath <- getEnv "ADDRESSES_PATH"
   policiesFolder <- getEnv "POLICIES_FOLDER"
@@ -89,13 +70,9 @@ mintToken (Options mintOptions dstTypeAddress) = do
   sNetworkMagic <- getEnv "NETWORK_MAGIC"
   let networkMagic = read sNetworkMagic :: Int
   networkEra <- lookupEnv "NETWORK_ERA"
-  -- mint owner, policy and token
-  let ownerName = capitalized $ owner mintOptions
-      policyName = policy mintOptions
-      tokenName = token mintOptions
-      tokenAmount = amount mintOptions
-      doCreateToken = createToken mintOptions
-      policyPath = getPolicyPath addressesPath ownerName policyName policiesFolder
+
+  let ownerName = capitalized $ owner sendOptions
+      adaAmount = ada sendOptions
       
   -- source address and signing key
   mSrcAddress <- getSrcAddress ownerName addressesPath
@@ -104,14 +81,11 @@ mintToken (Options mintOptions dstTypeAddress) = do
   -- destination address
   mDstAddress <- getDstAddress dstTypeAddress addressesPath
 
-  tokenExists <- doesFileExist $ getTokenPath policyPath tokenName
-  when (not tokenExists && not doCreateToken) $ 
-    putStrLn $ "Token " ++ tokenName ++ " does not exist ; use --c option to create it."
-  
-  Control.Monad.when (isJust mSrcAddress && isJust mDstAddress && (doCreateToken || tokenExists)) $ do
+  Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
     let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
-    doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath (Just tokenName) tokenAmount
-  putStrLn ""
+    rc <- doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount
+    unless rc $ putStrLn "Nothing sent"
+
 
 -- get srcAddress from owner
 getSrcAddress :: Owner -> FilePath -> IO (Maybe Address)
@@ -146,43 +120,42 @@ getDstAddress (DstFile dstFile) addressesPath = do
     _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ dstFile
   return maddress
 
--- mint amount of token from owner for destination address on given network
-doMint :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> String -> String -> Maybe String -> Int -> IO ()
-doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath mTokenName tokenAmount = do
-  let protocolParametersFile = "/tmp/protparams.json"
-      -- 1. Create a policy for our token
-      polName = buildPolicyName policyName mTokenName
-  
-  -- policy <- createPolicy polName policyPath
-  policy <- getPolicy policyName policyPath
-  when (isJust policy && tokenAmount /= 0 && isJust mSrcAddress) $ do
-    -- 2. Extract protocol parameters (needed for fee calculations)
+
+-- send amount of ADA from owner to destination address on given network
+doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> IO Bool
+doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount 
+  | isNothing mSrcAddress = do
+      putStrLn $  "No address found for " ++ ownerName
+      return False
+  | otherwise = do
+    let protocolParametersFile = "/tmp/protparams.json"
+    
+    -- 1. Extract protocol parameters (needed for fee calculations)
     saveProtocolParameters bNetwork protocolParametersFile
 
-    -- 3. Get UTXOs from our wallet
+    -- 2. Get UTXOs from our wallet
     utxo <- getUtxoFromWallet bNetwork (fromJust mSrcAddress)
 
     -- 4. Calculate tokens balance
     let balances = calculateTokensBalance(tokens utxo)
-    -- print balances
 
     -- 5. Calculate fees for the transaction
-    minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) mTokenName tokenAmount (policyId (fromJust policy)) utxo protocolParametersFile
+    minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount Nothing 0 "" utxo protocolParametersFile
     -- print (fromJust minFee)
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
-      let okFeeFile = getTransactionFile mTokenName OkFee
-      rc <- buildMintTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) mTokenName tokenAmount (policyId (fromJust policy)) utxo (fromJust minFee) okFeeFile
-      unless rc $ print "Failed to build transaction"
-      
+      let okFeeFile = getTransactionFile Nothing OkFee
+      rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount Nothing 0 "" utxo (fromJust minFee) okFeeFile
+      unless rc $ do 
+        putStrLn "Failed to build transaction"
+
       -- 7. Sign the transaction
-      let signFile = getTransactionFile mTokenName Sign
-      signMintTransaction bNetwork sKeyFile (fromJust policy) okFeeFile signFile
+      let signFile = getTransactionFile Nothing Sign
+      signSendTransaction bNetwork sKeyFile okFeeFile signFile
 
       -- 8. Submit the transaction to the blockchain
       rc <- submitTransaction bNetwork signFile
-      when rc $ do
-        when (isJust mTokenName) $ do
-          recordToken (fromJust policy) (fromJust mTokenName)
-      -- print rc
+      putStrLn ""
+      -- putStrLn signFile
+    return True

@@ -1,4 +1,4 @@
-import System.Environment
+import System.Environment ( getEnv, lookupEnv )
 import Options.Applicative
 import Data.Semigroup ((<>))
 import Data.Maybe ( isJust, fromJust )
@@ -50,7 +50,7 @@ doCreateAddress (Options owner address) = do
   network <- getEnv "NETWORK"
   sNetworkMagic <- getEnv "NETWORK_MAGIC"
   let networkMagic = read sNetworkMagic :: Int
-  let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = "", networkEnv = "" }
+  let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = Nothing, networkEnv = "" }
   
   Control.Monad.when (paymentKey address) $ do 
     rc <- createKeyPair Payment addressesPath cOwner

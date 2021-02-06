@@ -2,9 +2,9 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 module TokenUtils ( buildPolicyName, createKeyPair, createPolicy, Address, AddressType(Payment, Stake), 
-  BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
+  BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), getNetworkMagic, getNetworkEra,
   calculateTokensBalance, getPolicy, getPolicyPath, getPolicyId, getPolicyIdFromTokenId, Policy(..), 
-  getProtocolKeyDeposit, saveProtocolParameters, getAddress, getAddressFile, getSKeyFile, getVKeyFile, recordToken, Tip(..) ) where
+  getProtocolKeyDeposit, saveProtocolParameters, getAddress, getAddressFile, getSKeyFile, getVKeyFile, getTokenPath, recordToken, Tip(..) ) where
 
 import System.Directory ( createDirectoryIfMissing, doesFileExist)
 import System.FilePath ( takeDirectory )
@@ -42,6 +42,13 @@ data Policy = Policy
   }
   deriving Show
 
+-- some constants
+addressExt = ".addr"
+scriptExt = ".script"
+signingKeyExt = ".skey"
+tokensPathName = "tokens/"
+verificationKeyExt = ".vkey"
+
 -- build policy name
 -- if no policy name specified, search policy with token name
 buildPolicyName :: String -> Maybe String -> String
@@ -52,10 +59,10 @@ buildPolicyName policyName _ = policyName
 -- build Policy full file names
 buildPolicyPath :: String -> String -> Policy
 buildPolicyPath policyName policyPath = Policy {
-    policyScript = policyPath ++ "policy.script"
-  , policyVKey = policyPath ++ "policy.vkey"
-  , policySKey = policyPath ++ "policy.skey"
-  , tokensPath = policyPath ++ "tokens/"
+    policyScript = policyPath ++ "policy" ++ scriptExt
+  , policyVKey = policyPath ++ "policy" ++ verificationKeyExt
+  , policySKey = policyPath ++ "policy" ++ signingKeyExt
+  , tokensPath = policyPath ++ tokensPathName
   , policyId =  ""
   , policyName = ""
   }
@@ -141,25 +148,30 @@ recordToken policy tokenName = do
     let id = policyId (policy:: Policy)  ++ "." ++ tokenName
     let tokenInfo = TokenInfo { infoVersion = tokenInfoVersion, name = tokenName, id = id, policyName = policyName (policy:: Policy), policyId = policyId (policy:: Policy)}
     B8.writeFile tokenFile (encode tokenInfo)
-    
+
+-- get token path
+getTokenPath :: FilePath -> String -> FilePath
+getTokenPath policyPath tokenName = policyPath ++ tokensPathName ++ tokenName
+
 -- protocols helpers ------------------------------------------------------
 
 -- protocol parameters json structure
 data ProtocolVersion = ProtocolVersion {
   minor :: Int
 , major :: Int
-}  deriving (Generic)
+}  deriving (Generic, Show)
 instance FromJSON ProtocolVersion
 
 newtype ExtraEntropy = ExtraEntropy {
   tag :: String
-}  deriving (Generic)
+}  deriving (Generic, Show)
 instance FromJSON ExtraEntropy
 
 data ProtocolParams = ProtocolParams {
-  protocolVersion :: ProtocolVersion
+  poolDeposit :: Int
+, protocolVersion :: ProtocolVersion
 , minUTxOValue :: Int
-, decentralisationParam :: Int
+, decentralisationParam :: Float
 , maxTxSize :: Int
 , minPoolCost :: Int
 , minFeeA :: Int
@@ -173,7 +185,7 @@ data ProtocolParams = ProtocolParams {
 , rho :: Float
 , tau :: Float
 , a0 :: Float
-} deriving (Generic)
+} deriving (Generic, Show)
 instance FromJSON ProtocolParams
 
 -- blockchain parameters
@@ -181,10 +193,16 @@ data BlockchainNetwork = BlockchainNetwork
   {
     network :: String
   , networkMagic :: Int
-  , networkEra :: String
+  , networkEra :: Maybe String
   , networkEnv :: String
   }
   deriving Show
+
+getNetworkMagic :: BlockchainNetwork -> [String]
+getNetworkMagic bNetwork = [show (networkMagic bNetwork)]
+
+getNetworkEra :: BlockchainNetwork -> [String]
+getNetworkEra bNetwork = ["--" ++ fromJust (networkEra bNetwork) | isJust $ networkEra bNetwork]
 
 data Tip = Tip {
   blockNo :: Int
@@ -197,23 +215,28 @@ instance FromJSON Tip
 getProtocolKeyDeposit :: BlockchainNetwork -> IO (Maybe Int)
 getProtocolKeyDeposit bNetwork = do
   let netName = network bNetwork
-  let netMagic = networkMagic bNetwork
-  let netEra = networkEra bNetwork
+  let netMagic = getNetworkMagic bNetwork
+  let netEra = getNetworkEra bNetwork
   let envParam = networkEnv bNetwork
-  (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" ["query", "protocol-parameters", netName, show netMagic, netEra]){ std_out = CreatePipe }
+  let runParams = ["query", "protocol-parameters", netName]++netMagic++netEra
+  (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" runParams ){ std_out = CreatePipe }
   r <- waitForProcess ph
   jsonData <- hGetContents rc
   let protocolParams = decode (B8.pack jsonData) :: Maybe ProtocolParams
-  if isJust protocolParams then return $ Just $ keyDeposit $ fromJust protocolParams else return Nothing
+--  if isJust protocolParams then return $ Just $ keyDeposit $ fromJust protocolParams else return Nothing
+  -- protocol params changed : no more keyDeposit available
+  -- so replace temporarily with hard value
+  return $ Just 2000000
 
 -- get protocol parameters
 saveProtocolParameters :: BlockchainNetwork -> FilePath -> IO Bool
 saveProtocolParameters bNetwork protocolParams = do
   let netName = network bNetwork
-  let netMagic = networkMagic bNetwork
-  let netEra = networkEra bNetwork
+  let netMagic = getNetworkMagic bNetwork
+  let netEra = getNetworkEra bNetwork
   let envParam = networkEnv bNetwork
-  (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" ["query", "protocol-parameters", netName, show netMagic, netEra, "--out-file", protocolParams]){ std_out = CreatePipe }
+  let runParams = ["query", "protocol-parameters", netName]++netMagic++netEra++["--out-file", protocolParams]
+  (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
   r <- waitForProcess ph
   return True
 
@@ -263,7 +286,7 @@ getAddressPath addressesPath ownerName = addressesPath ++ ownerName ++ "/"
 getAddressKeyFile :: FilePath -> AddressType -> String -> String -> FilePath
 getAddressKeyFile addressesPath addressType addressKey name = do
   let sAddressType = if addressType == Payment then "payment" else "stake"
-  let extMap = [ ("address", ".addr"), ("signing_key", ".skey"), ("verification_key", ".vkey")]
+  let extMap = [ ("address", ".addr"), ("signing_key", signingKeyExt), ("verification_key", verificationKeyExt)]
   let extM = lookup addressKey extMap
   case extM of
     Just ext -> getAddressPath addressesPath name ++ sAddressType ++ name ++ ext

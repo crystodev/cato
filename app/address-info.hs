@@ -1,4 +1,4 @@
-import System.Environment ( getEnv )
+import System.Environment ( getEnv, lookupEnv )
 import Options.Applicative
 import Data.Semigroup ((<>))
 import Data.Maybe ( isNothing, fromJust )
@@ -78,9 +78,9 @@ getInfoAddress (Options owner infoAddress) = do
   network <- getEnv "NETWORK"
   snetworkMagic <- getEnv "NETWORK_MAGIC"
   let networkMagic = read snetworkMagic :: Int
-  networkEra <- getEnv "NETWORK_ERA"
+  networkEra <- lookupEnv "NETWORK_ERA"
 
-  let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = "--" ++ networkEra, networkEnv = networkSocket }
+  let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
 
   let addressType = if stake infoAddress then Stake else Payment
   maddress <- getAddress $ getAddressFile addressesPath addressType cOwner

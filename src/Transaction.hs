@@ -10,7 +10,7 @@ import Data.Maybe ( isNothing, isJust, fromJust, fromMaybe )
 import Data.List ( delete, foldl', intercalate, isSuffixOf, find )
 import Data.Aeson (decode)
 import qualified Data.ByteString.Lazy.Char8 as B8
-import TokenUtils ( Address, AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv),
+import TokenUtils ( Address, AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), getNetworkMagic, getNetworkEra,
   calculateTokensBalance, getAddress, getAddressFile, getVKeyFile, getProtocolKeyDeposit, Policy(Policy, policyScript, policyVKey, policySKey, policyId), Tip(Tip, slotNo) )
 
 data Utxo = Utxo {
@@ -61,13 +61,13 @@ checkSendTransactionAmount adaAmount token tokenAmount transactionType policyId 
     putStrLn "No keyDeposit value found"
     return False    
   | adaAmount /=0 && adaAmount * 1000000 < fromJust keyDeposit && fee /= 0 = do
-    putStrLn $ "To few lovelace for transaction " ++ show adaAmount ++ " ADA ; you need at least " ++ show (fromJust keyDeposit) ++ " lovelace for transaction"
+    putStrLn $ "Too few lovelace for transaction " ++ show adaAmount ++ " ADA ; you need at least " ++ show (fromJust keyDeposit) ++ " lovelace for transaction"
     return False
   | otherwise =
     return True
 
 -- check if ada and token balances are above spending
-checkSendTransactionBalance :: [(String, Int)] -> String -> Int -> Int -> Int -> TransactionType -> IO(Bool, [(String, Int)])
+checkSendTransactionBalance :: [(String, Int)] -> Maybe String -> Int -> Int -> Int -> TransactionType -> IO(Bool, [(String, Int)])
 checkSendTransactionBalance tokenValues assetId fee lovelaceAmount tokenAmount transactionType = do
   let adaId = "lovelace"
   let balances = calculateTokensBalance tokenValues
@@ -75,10 +75,10 @@ checkSendTransactionBalance tokenValues assetId fee lovelaceAmount tokenAmount t
   if snd (head (filter(\(t, b) -> t == adaId) balances2)) < 0 then do
     putStrLn $ "The address does not have " ++ show(fee+lovelaceAmount) ++ " lovelaces ( " ++ show(fee+ div lovelaceAmount 1000000) ++ " ada )" 
     return (False, [("",0)])
-  else if transactionType /= Mint then do
-    let balances3 = map (\(t, b) -> if t == assetId then (t, b-tokenAmount) else (t, b)) balances2
-    if snd (head (filter(\(t, b) -> t == assetId) balances3)) < 0 then do
-      putStrLn $ "The address does not have " ++ show tokenAmount ++ assetId
+  else if transactionType /= Mint && isJust assetId && tokenAmount /= 0 then do
+    let balances3 = map (\(t, b) -> if t == fromJust assetId then (t, b-tokenAmount) else (t, b)) balances2
+    if snd (head (filter(\(t, b) -> t == fromJust assetId) balances3)) < 0 then do
+      putStrLn $ "The address does not have " ++ show tokenAmount ++ fromJust assetId
       return (False, [("",0)])
     else
       return(True, balances3)
@@ -106,24 +106,23 @@ buildTxIn utxos = concat ["--tx-in":[u] | u <- utxos]
 buildTransferTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> Maybe String -> Int -> String -> Utxo -> Int -> FilePath -> IO Bool 
 buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmount token tokenAmount policyId utxo fee outFile = do
   keyDeposit <- getProtocolKeyDeposit bNetwork
-  -- need to check isJust keyDeposit
   bool <- checkSendTransactionAmount adaAmount token tokenAmount transactionType policyId utxo fee keyDeposit
   if bool then do
     let adaId = "lovelace"
     let lovelaceAmount = if adaAmount == 0 && (transactionType == Mint || transactionType == Send) then fromJust keyDeposit else adaAmount * 1000000
-    let assetId = policyId ++ "." ++ fromMaybe "" token
+    let assetId = if isJust token then Just $ policyId ++ "." ++ fromJust token else Nothing
     (rc, balances) <- checkSendTransactionBalance (tokens utxo) assetId fee lovelaceAmount tokenAmount transactionType
     if rc then do
       let txOutSrc = foldl' joinKV srcAddress (reverse balances)
-      let txOutDst = dstAddress ++ "+" ++ show lovelaceAmount ++ " " ++ adaId ++ (if isNothing token then "" else "+" ++ show tokenAmount ++ " " ++ assetId)
+      let txOutDst = dstAddress ++ "+" ++ show lovelaceAmount ++ " " ++ adaId ++ (if isNothing token || tokenAmount == 0 then "" else "+" ++ show tokenAmount ++ " " ++ fromJust assetId)
       ttl <- calculateTTL bNetwork
       if isJust ttl then do
-        let runParams = ["transaction", "build-raw", networkEra bNetwork, "--fee", show fee] ++ buildTxIn (utxos utxo) ++
+        let runParams = ["transaction", "build-raw"] ++ getNetworkEra bNetwork ++ ["--fee", show fee] ++ buildTxIn (utxos utxo) ++
               ["--ttl", show (fromJust ttl), "--tx-out", txOutDst, "--tx-out", txOutSrc] ++ 
-              (if transactionType == Mint then ["--mint", show tokenAmount ++" "++assetId] else []) ++ ["--out-file", outFile] 
+              (if transactionType == Mint && isJust assetId then ["--mint", show tokenAmount ++" "++fromJust assetId] else []) ++ ["--out-file", outFile] 
         (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
         r <- waitForProcess ph
-        return True
+        return (r == ExitSuccess )
       else
         return False
     else
@@ -163,17 +162,17 @@ buildBurnTransaction bNetwork srcAddress token tokenAmount policyId utxo balance
   if isJust assetId then do
     keyDeposit <- getProtocolKeyDeposit bNetwork
     let adaId = "lovelace"
-    (rc, balances) <- checkSendTransactionBalance (tokens utxo) (fromJust assetId) fee 0 tokenAmount Burn
+    (rc, balances) <- checkSendTransactionBalance (tokens utxo) assetId fee 0 tokenAmount Burn
     if rc then do
       let txOutSrc = foldl' joinKV srcAddress (reverse balances)
       ttl <- calculateTTL bNetwork
       if isJust ttl then do
-        let runParams = ["transaction", "build-raw", networkEra bNetwork, "--fee", show fee] ++ buildTxIn (utxos utxo) ++
+        let runParams = ["transaction", "build-raw"] ++ getNetworkEra bNetwork ++ ["--fee", show fee] ++ buildTxIn (utxos utxo) ++
               ["--ttl", show (fromJust ttl), "--tx-out", txOutSrc] ++ 
               ["--mint", show (-tokenAmount) ++" "++fromJust assetId] ++ ["--out-file", outFile]
         (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
         r <- waitForProcess ph
-        return True
+        return (r == ExitSuccess )
       else
         return False
     else
@@ -192,10 +191,10 @@ buildMintTransaction bNetwork srcAddress dstAddress token tokenAmount policyId u
 -- build send transaction for token
 buildSendTransaction :: BlockchainNetwork -> Address -> Address -> Int -> Maybe String -> Int -> String -> Utxo -> Int -> FilePath -> IO Bool 
 buildSendTransaction bNetwork srcAddress dstAddress adaAmount token tokenAmount policyId utxo fee draftFile = do
-  if isJust token && tokenAmount /= 0 then
+--  if isJust token && tokenAmount /= 0 then
     buildTransferTransaction Send bNetwork srcAddress dstAddress adaAmount token tokenAmount policyId utxo fee draftFile
-  else
-    return False
+--  else
+--    return False
 
 -- calculate fee for transaction
 calculateFees :: TransactionType -> BlockchainNetwork -> Address  -> Address -> Int -> Maybe String -> Int -> String -> Utxo -> [(String,Int)] -> FilePath -> IO (Maybe Int)
@@ -266,10 +265,10 @@ createAddress bNetwork addressType addressesPath ownerName = do
 getUtxoFromWallet :: BlockchainNetwork -> Address -> IO Utxo
 getUtxoFromWallet bNetwork address = do
   let netName = network bNetwork
-  let netMagic = networkMagic bNetwork
-  let netEra = networkEra bNetwork
+  let netMagic = getNetworkMagic bNetwork
+  let netEra = getNetworkEra bNetwork
   let envParam = Just [("CARDANO_NODE_SOCKET_PATH", networkEnv bNetwork)]
-  let runParams = ["query", "utxo", netName, show netMagic, netEra, "--address", address]
+  let runParams = ["query", "utxo", netName] ++ netMagic ++ netEra ++ ["--address", address]
   (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams ) { env = envParam } {std_out = CreatePipe }
   r <- waitForProcess ph
   raw <- hGetContents hOut

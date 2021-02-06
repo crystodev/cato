@@ -1,4 +1,4 @@
-import System.Environment ( getEnv )
+import System.Environment ( getEnv, lookupEnv )
 import Configuration.Dotenv (loadFile, defaultConfig)
 import Options.Applicative
 import Data.Semigroup ((<>))
@@ -55,6 +55,7 @@ parseSend = SendOptions
     <> help "ada amount" 
     <> value 0)
 
+
 parseDstName :: Parser DstTypeAddress
 parseDstName = DstName <$> strOption ( long "destination" <> short 'd' <> metavar "DESTINATION NAME" <> help "name of destination address owner" )
 
@@ -88,7 +89,7 @@ sendToken (Options sendOptions dstTypeAddress) = do
   network <- getEnv "NETWORK"
   sNetworkMagic <- getEnv "NETWORK_MAGIC"
   let networkMagic = read sNetworkMagic :: Int
-  networkEra <- getEnv "NETWORK_ERA"
+  networkEra <- lookupEnv "NETWORK_ERA"
   -- mint owner, policy and token
   let ownerName = capitalized $ owner sendOptions
       adaAmount = ada sendOptions
@@ -105,7 +106,7 @@ sendToken (Options sendOptions dstTypeAddress) = do
   mDstAddress <- getDstAddress dstTypeAddress addressesPath
 
   Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
-    let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = "--" ++ networkEra, networkEnv = networkSocket }
+    let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
     rc <- doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount policyName policiesPath (Just tokenName) tokenAmount
     unless rc $ putStrLn "Nothing sent"
 

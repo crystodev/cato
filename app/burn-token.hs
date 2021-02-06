@@ -1,4 +1,4 @@
-import System.Environment ( getEnv )
+import System.Environment ( getEnv, lookupEnv )
 import Configuration.Dotenv (loadFile, defaultConfig)
 import Options.Applicative
 import Data.Semigroup ((<>))
@@ -69,7 +69,7 @@ burnToken (Options mintOptions) = do
   network <- getEnv "NETWORK"
   sNetworkMagic <- getEnv "NETWORK_MAGIC"
   let networkMagic = read sNetworkMagic :: Int
-  networkEra <- getEnv "NETWORK_ERA"
+  networkEra <- lookupEnv "NETWORK_ERA"
   -- mint owner, policy and token
   let ownerName = capitalized $ owner mintOptions
       policyName = policy mintOptions
@@ -82,7 +82,7 @@ burnToken (Options mintOptions) = do
   let sKeyFile = getSKeyFile addressesPath Payment ownerName
 
   Control.Monad.when (isJust mSrcAddress) $ do
-    let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = "--" ++ networkEra, networkEnv = networkSocket }
+    let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
     doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath (Just tokenName) tokenAmount
   putStrLn ""
 
