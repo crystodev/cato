@@ -141,13 +141,13 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount
     let balances = calculateTokensBalance(tokens utxo)
 
     -- 5. Calculate fees for the transaction
-    minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] "" utxo protocolParametersFile
+    minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] utxo protocolParametersFile
     -- print (fromJust minFee)
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
       let okFeeFile = getTransactionFile Nothing OkFee
-      rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] "" utxo (fromJust minFee) okFeeFile
+      rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] utxo (fromJust minFee) okFeeFile
       unless rc $ do 
         putStrLn "Failed to build transaction"
 

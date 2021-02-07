@@ -177,13 +177,13 @@ doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath
     let polId = policyId (fromJust policy)
     -- let tokenList = ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} | if isNothing mTokenName])
     let tokenList = if isNothing mTokenName then [] else ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} ])
-    minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) tokenList mTokenMetadata polId utxo protocolParametersFile
+    minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) tokenList mTokenMetadata utxo protocolParametersFile
     -- print (fromJust minFee)
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
       let okFeeFile = getTransactionFile mTokenName OkFee
-      rc <- buildMintTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) tokenList mTokenMetadata polId utxo (fromJust minFee) okFeeFile
+      rc <- buildMintTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) tokenList mTokenMetadata utxo (fromJust minFee) okFeeFile
       unless rc $ print "Failed to build transaction"
       
       -- 7. Sign the transaction

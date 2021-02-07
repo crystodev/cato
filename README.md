@@ -5,6 +5,7 @@ A set of tools written in Haskell to interact with native tokens on Cardano bloc
 These tools are intended to play with the new native tokens of Cardano chain and help to understand how the system works by playing with it.
 
 If you are interested in developing on native tokens, have a look at [these web pages](https://developers.cardano.org/en/development-environments/native-tokens/native-tokens/).
+
 ## Requirements
 
 - a running local Cardano Node from Mary Era
@@ -28,19 +29,19 @@ If you are interested in developing on native tokens, have a look at [these web 
 Build with
 
 ```bash
-  $ stack build
+  stack build
 ```
 
 and run your program with
 
 ```bash
-  $ stack exec <utility> -- <params>
+  stack exec <utility> -- <params>
 ```
 
 Alternatively you can install your application with
 
-```
-  $ stack install
+```bash
+  stack install
 ```
 
 and run the utility from the command line.

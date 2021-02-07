@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 module Transaction ( buildBurnTransaction, buildMintTransaction, buildSendTransaction, calculateBurnFees, calculateMintFees, calculateSendFees, createAddress, getTransactionFile,
   FileType(Draft, OkFee, Sign), getUtxoFromWallet, getTokenIdFromName,
@@ -63,17 +61,14 @@ someTokenAmount :: Tokens -> Bool
 someTokenAmount = any (\token -> tokenAmount token > 0)
 
 -- check if ada and token amount are enough for transaction 
-checkSendTransactionAmount :: Int -> Tokens -> TransactionType -> String -> Utxo -> Int -> Maybe Int -> IO Bool 
-checkSendTransactionAmount adaAmount tokens transactionType policyId utxo fee keyDeposit
+checkSendTransactionAmount :: Int -> Tokens -> TransactionType -> Utxo -> Int -> Maybe Int -> IO Bool 
+checkSendTransactionAmount adaAmount tokens transactionType utxo fee keyDeposit
   | adaAmount < 0 || not (checkTokensAmount tokens) = do
     putStrLn "Cannot send negative amount"
     return False
   | adaAmount == 0 && not (someTokenAmount tokens) = do
     putStrLn "Nothing to send"
     return False
---  else if isNothing policyId then do
---    putStrLn "No policy id"
---    return False
   | nbUtxos utxo == 0 = do
     putStrLn "No utxo found"
     return False
@@ -112,23 +107,23 @@ joinKV :: String -> (String,Int) -> String
 joinKV acc (key, value) = acc ++ " +" ++ show value ++ " " ++ key
 
 -- build transaction
-buildTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> Tokens -> Maybe String -> String -> Utxo -> [(String,Int)] -> Int -> FilePath -> IO Bool 
-buildTransaction Burn bNetwork srcAddress _ _ tokens _ policyId utxo balances fee outFile = do
-  buildBurnTransaction bNetwork srcAddress tokens policyId utxo balances fee outFile
-buildTransaction Mint bNetwork srcAddress dstAddress _ tokens mTokenMetadata policyId utxo _ fee outFile = do
-  buildMintTransaction bNetwork srcAddress dstAddress tokens mTokenMetadata policyId utxo fee outFile
-buildTransaction Send bNetwork srcAddress dstAddress adaAmount tokens _ policyId utxo _ fee outFile = do
-  buildSendTransaction bNetwork srcAddress dstAddress adaAmount tokens policyId utxo fee outFile
+buildTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> Tokens -> Maybe String -> Utxo -> [(String,Int)] -> Int -> FilePath -> IO Bool 
+buildTransaction Burn bNetwork srcAddress _ _ tokens _ utxo balances fee outFile = do
+  buildBurnTransaction bNetwork srcAddress tokens utxo balances fee outFile
+buildTransaction Mint bNetwork srcAddress dstAddress _ tokens mTokenMetadata utxo _ fee outFile = do
+  buildMintTransaction bNetwork srcAddress dstAddress tokens mTokenMetadata utxo fee outFile
+buildTransaction Send bNetwork srcAddress dstAddress adaAmount tokens _ utxo _ fee outFile = do
+  buildSendTransaction bNetwork srcAddress dstAddress adaAmount tokens utxo fee outFile
 
 
 -- build transfer transaction for token
 buildTxIn :: [String] -> [String]
 buildTxIn utxos = concat ["--tx-in":[u] | u <- utxos]
 
-buildTransferTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> Tokens -> Maybe String -> String -> Utxo -> Int -> FilePath -> IO Bool 
-buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmount tokenList mTokenMetadata policyId utxo fee outFile = do
+buildTransferTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> Tokens -> Maybe String -> Utxo -> Int -> FilePath -> IO Bool 
+buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmount tokenList mTokenMetadata utxo fee outFile = do
   keyDeposit <- getProtocolKeyDeposit bNetwork
-  bool <- checkSendTransactionAmount adaAmount tokenList transactionType policyId utxo fee keyDeposit
+  bool <- checkSendTransactionAmount adaAmount tokenList transactionType utxo fee keyDeposit
   if bool then do
     let adaId = "lovelace"
     let lovelaceAmount = if adaAmount == 0 && (transactionType == Mint || transactionType == Send) then fromJust keyDeposit else adaAmount * 1000000
@@ -157,13 +152,10 @@ buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmoun
       return False
 
 -- check burnTransaction
-checkBurnTransaction :: Tokens -> String -> Utxo -> [(String, Int)] -> IO (Maybe String) 
-checkBurnTransaction tokenList policyId utxo balances
+checkBurnTransaction :: Tokens -> Utxo -> [(String, Int)] -> IO (Maybe String) 
+checkBurnTransaction tokenList utxo balances
   | null tokenList = do
     putStrLn "No token name"
-    return Nothing
-  | policyId == "" = do
-    putStrLn "No policy id"
     return Nothing
   | nbUtxos utxo == 0 = do
     putStrLn "No utxo found"
@@ -174,7 +166,7 @@ checkBurnTransaction tokenList policyId utxo balances
     let tId = tokenId token
     let tAmount = tokenAmount token
     if isNothing $ lookup tId balances then do
-      putStrLn $ "Cannot burn token " ++ tName ++ " with policy " ++ policyId ++ " : no token"
+      putStrLn $ "Cannot burn token " ++ tName ++ " with id " ++ tId ++ " : no token"
       return Nothing
     else do
       let tokenBalance = lookup tId balances
@@ -185,9 +177,9 @@ checkBurnTransaction tokenList policyId utxo balances
         return (Just tId)
 
 -- build burn transaction for token
-buildBurnTransaction :: BlockchainNetwork -> Address -> Tokens -> String -> Utxo -> [(String,Int)] -> Int -> FilePath -> IO Bool 
-buildBurnTransaction bNetwork srcAddress tokenList policyId utxo balances fee outFile = do
-  assetId <- checkBurnTransaction tokenList policyId utxo balances
+buildBurnTransaction :: BlockchainNetwork -> Address -> Tokens -> Utxo -> [(String,Int)] -> Int -> FilePath -> IO Bool 
+buildBurnTransaction bNetwork srcAddress tokenList utxo balances fee outFile = do
+  assetId <- checkBurnTransaction tokenList utxo balances
   if isJust assetId then do
     keyDeposit <- getProtocolKeyDeposit bNetwork
     let adaId = "lovelace"
@@ -210,26 +202,26 @@ buildBurnTransaction bNetwork srcAddress tokenList policyId utxo balances fee ou
     return False
 
 -- build mint transaction for token
-buildMintTransaction :: BlockchainNetwork -> Address -> Address -> Tokens -> Maybe String -> String -> Utxo -> Int -> FilePath -> IO Bool 
-buildMintTransaction bNetwork srcAddress dstAddress tokens mTokenMetadata policyId utxo fee draftFile = do
+buildMintTransaction :: BlockchainNetwork -> Address -> Address -> Tokens -> Maybe String -> Utxo -> Int -> FilePath -> IO Bool 
+buildMintTransaction bNetwork srcAddress dstAddress tokens mTokenMetadata utxo fee draftFile = do
   if someTokenAmount tokens then
-    buildTransferTransaction Mint bNetwork srcAddress dstAddress 0 tokens mTokenMetadata policyId utxo fee draftFile
+    buildTransferTransaction Mint bNetwork srcAddress dstAddress 0 tokens mTokenMetadata utxo fee draftFile
   else
     return False
 
 -- build send transaction for token
-buildSendTransaction :: BlockchainNetwork -> Address -> Address -> Int -> Tokens -> String -> Utxo -> Int -> FilePath -> IO Bool 
-buildSendTransaction bNetwork srcAddress dstAddress adaAmount tokens policyId utxo fee draftFile = do
+buildSendTransaction :: BlockchainNetwork -> Address -> Address -> Int -> Tokens -> Utxo -> Int -> FilePath -> IO Bool 
+buildSendTransaction bNetwork srcAddress dstAddress adaAmount tokens utxo fee draftFile = do
 --  if isJust token && tokenAmount /= 0 then
-    buildTransferTransaction Send bNetwork srcAddress dstAddress adaAmount tokens Nothing policyId utxo fee draftFile
+    buildTransferTransaction Send bNetwork srcAddress dstAddress adaAmount tokens Nothing utxo fee draftFile
 --  else
 --    return False
 
 -- calculate fee for transaction
-calculateFees :: TransactionType -> BlockchainNetwork -> Address  -> Address -> Int -> Tokens -> Maybe String -> String -> Utxo -> [(String,Int)] -> FilePath -> IO (Maybe Int)
-calculateFees transactionType bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata policyId utxo balances protParamsFile = do
+calculateFees :: TransactionType -> BlockchainNetwork -> Address  -> Address -> Int -> Tokens -> Maybe String -> Utxo -> [(String,Int)] -> FilePath -> IO (Maybe Int)
+calculateFees transactionType bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata utxo balances protParamsFile = do
   let draftFile = getTransactionFile Nothing Draft
-  bool <- buildTransaction transactionType bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata policyId utxo balances 0 draftFile
+  bool <- buildTransaction transactionType bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata utxo balances 0 draftFile
   if not bool then do
     putStrLn "Failed to build transaction"
     return Nothing
@@ -243,17 +235,17 @@ calculateFees transactionType bNetwork srcAddress dstAddress adaAmount tokens to
     return (Just mintFee)   
 
 -- calculate fee for burn transaction
-calculateBurnFees :: BlockchainNetwork -> Address -> Tokens -> String -> Utxo -> [(String,Int)] -> FilePath -> IO (Maybe Int)
+calculateBurnFees :: BlockchainNetwork -> Address -> Tokens -> Utxo -> [(String,Int)] -> FilePath -> IO (Maybe Int)
 calculateBurnFees bNetwork srcAddress tokens = calculateFees Burn bNetwork srcAddress srcAddress 0 tokens Nothing
 
 -- calculate fee for mint transaction
-calculateMintFees :: BlockchainNetwork -> Address -> Tokens -> Maybe String -> String -> Utxo -> FilePath -> IO (Maybe Int)
-calculateMintFees bNetwork srcAddress tokens tokenMetadata policyId utxo = calculateFees Mint bNetwork srcAddress srcAddress 0 tokens tokenMetadata policyId utxo []
+calculateMintFees :: BlockchainNetwork -> Address -> Tokens -> Maybe String -> Utxo -> FilePath -> IO (Maybe Int)
+calculateMintFees bNetwork srcAddress tokens tokenMetadata utxo = calculateFees Mint bNetwork srcAddress srcAddress 0 tokens tokenMetadata utxo []
 
 -- calculate fee for send transaction
-calculateSendFees :: BlockchainNetwork -> Address -> Address -> Int -> Tokens -> String -> Utxo -> FilePath -> IO (Maybe Int)
-calculateSendFees bNetwork srcAddress dstAddress adaAmount tokens policyId utxo = 
-  calculateFees Send bNetwork srcAddress dstAddress adaAmount tokens Nothing policyId utxo []
+calculateSendFees :: BlockchainNetwork -> Address -> Address -> Int -> Tokens -> Utxo -> FilePath -> IO (Maybe Int)
+calculateSendFees bNetwork srcAddress dstAddress adaAmount tokens utxo = 
+  calculateFees Send bNetwork srcAddress dstAddress adaAmount tokens Nothing utxo []
 
 -- calculate network TTL
 calculateTTL :: BlockchainNetwork -> IO (Maybe Int)

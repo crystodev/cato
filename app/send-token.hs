@@ -177,13 +177,13 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount policyName 
       -- 5. Calculate fees for the transaction
       -- let tokenList = ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} | if isNothing mTokenName])
       let tokenList = if isNothing mTokenName then [] else ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId policyId (fromJust mTokenName)} ])
-      minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList policyId utxo protocolParametersFile
+      minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList utxo protocolParametersFile
       -- print (fromJust minFee)
 
       when (isJust minFee) $ do
         -- 6. Build actual transaction including correct fees
         let okFeeFile = getTransactionFile mTokenName OkFee
-        rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList policyId utxo (fromJust minFee) okFeeFile
+        rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList utxo (fromJust minFee) okFeeFile
         unless rc $ do 
           putStrLn "Failed to build transaction"
 
