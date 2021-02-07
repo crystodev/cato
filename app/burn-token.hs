@@ -3,12 +3,12 @@ import Configuration.Dotenv (loadFile, defaultConfig)
 import Options.Applicative
 import Data.Semigroup ((<>))
 import Control.Monad (void, when, unless)
-import Data.Maybe ( isJust, fromJust )
+import Data.Maybe ( isNothing, isJust, fromJust )
 import Baseutils ( capitalized )
 import TokenUtils ( Address, AddressType(Payment), buildPolicyName, BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
-  calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyPath, Policy(Policy, policyId), getSKeyFile, saveProtocolParameters )
+  calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyPath, Policy(Policy, policyId), getTokenId, getSKeyFile, saveProtocolParameters )
 import Transaction ( buildBurnTransaction, calculateBurnFees, getTransactionFile, FileType(..), getUtxoFromWallet, signBurnTransaction,
-  submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
+  submitTransaction, Token(..), Tokens, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 
 type Owner = String
 -- parsing options
@@ -44,7 +44,7 @@ parseMint = MintOptions
   <> help "token" )
   <*> option auto
   ( long "amount"
-  <> short 'm'
+  <> short 'n'
   <> metavar "AMOUNT"
   <> help "tokens amount" )
 
@@ -76,7 +76,7 @@ burnToken (Options mintOptions) = do
       tokenName = token mintOptions
       tokenAmount = amount mintOptions
       policiesPath = getPolicyPath addressesPath ownerName policyName policiesFolder
-      
+
   -- source address and signing key
   mSrcAddress <- getSrcAddress ownerName addressesPath
   let sKeyFile = getSKeyFile addressesPath Payment ownerName
@@ -117,13 +117,16 @@ doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath mTokenNam
     let balances = calculateTokensBalance(tokens utxo)
 
     -- 5. Calculate fees for the transaction
-    minFee <- calculateBurnFees bNetwork (fromJust mSrcAddress) mTokenName tokenAmount (policyId (fromJust policy)) utxo balances protocolParametersFile
+    let polId = policyId (fromJust policy)
+    -- let tokenList = ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} | if isNothing mTokenName])
+    let tokenList = if isNothing mTokenName then [] else ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} ])
+    minFee <- calculateBurnFees bNetwork (fromJust mSrcAddress) tokenList polId utxo balances protocolParametersFile
     -- print (fromJust minFee)
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
       let okFeeFile = getTransactionFile mTokenName OkFee
-      rc <- buildBurnTransaction bNetwork (fromJust mSrcAddress) mTokenName tokenAmount (policyId (fromJust policy)) utxo balances (fromJust minFee) okFeeFile
+      rc <- buildBurnTransaction bNetwork (fromJust mSrcAddress) tokenList polId utxo balances (fromJust minFee) okFeeFile
       unless rc $ print "Failed to build transaction"
       
       -- 7. Sign the transaction

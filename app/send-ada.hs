@@ -6,7 +6,8 @@ import Control.Monad (void, when, unless)
 import Data.Maybe ( isJust, isNothing, fromJust, fromMaybe )
 import Baseutils ( capitalized )
 import TokenUtils ( Address, AddressType(Payment), buildPolicyName, BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
-  calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyIdFromTokenId, getPolicyPath, Policy(Policy, policyId), getSKeyFile, saveProtocolParameters )
+  calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyIdFromTokenId, getPolicyPath, Policy(Policy, policyId), getSKeyFile, 
+  saveProtocolParameters )
 import Transaction ( buildSendTransaction, calculateSendFees, getTransactionFile, FileType(..), getUtxoFromWallet, getTokenIdFromName, signSendTransaction,
   submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 
@@ -140,13 +141,13 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount
     let balances = calculateTokensBalance(tokens utxo)
 
     -- 5. Calculate fees for the transaction
-    minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount Nothing 0 "" utxo protocolParametersFile
+    minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] "" utxo protocolParametersFile
     -- print (fromJust minFee)
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
       let okFeeFile = getTransactionFile Nothing OkFee
-      rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount Nothing 0 "" utxo (fromJust minFee) okFeeFile
+      rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] "" utxo (fromJust minFee) okFeeFile
       unless rc $ do 
         putStrLn "Failed to build transaction"
 

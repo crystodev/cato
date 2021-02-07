@@ -20,6 +20,7 @@ If you are interested in developing on native tokens, have a look at [these web 
 - *create-policy* to create a new currency policy
 - *mint-token* to mint new tokens asset according to a policy
 - *policy-info* to get policy details and associated tokens (if created with *mint-token*)
+- *send-ada* to transfer Ada between addresses
 - *send-token* to transfer token assets and Ada between addresses
 
 ## Running utilities

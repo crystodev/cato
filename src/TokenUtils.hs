@@ -3,8 +3,8 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 module TokenUtils ( buildPolicyName, createKeyPair, createPolicy, Address, AddressType(Payment, Stake), 
   BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), getNetworkMagic, getNetworkEra,
-  calculateTokensBalance, getPolicy, getPolicyPath, getPolicyId, getPolicyIdFromTokenId, Policy(..), 
-  getProtocolKeyDeposit, saveProtocolParameters, getAddress, getAddressFile, getSKeyFile, getVKeyFile, getTokenPath, 
+  calculateTokensBalance, getPolicy, getPolicyPath, getPolicyId, getPolicyIdFromTokenId, getTokenId, Policy(..), 
+  getProtocolKeyDeposit, getProtocolMinUTxOValue, saveProtocolParameters, getAddress, getAddressFile, getSKeyFile, getVKeyFile, getTokenPath, 
   recordToken, saveMetadata, Tip(..) ) where
 
 import System.Directory ( createDirectoryIfMissing, doesFileExist)
@@ -146,13 +146,16 @@ recordToken policy tokenName = do
   let tokenFile = tokensPath policy ++ tokenName
   rc <- doesFileExist tokenFile
   unless rc $ do
-    let id = policyId (policy:: Policy)  ++ "." ++ tokenName
+    let id = getTokenId (policyId (policy:: Policy)) tokenName
     let tokenInfo = TokenInfo { infoVersion = tokenInfoVersion, name = tokenName, id = id, policyName = policyName (policy:: Policy), policyId = policyId (policy:: Policy)}
     B8.writeFile tokenFile (encode tokenInfo)
 
 -- get token path
 getTokenPath :: FilePath -> String -> FilePath
 getTokenPath policyPath tokenName = policyPath ++ tokensPathName ++ tokenName
+
+getTokenId :: String -> String -> String
+getTokenId policyId tokenName = policyId ++ "." ++ tokenName
 
 -- protocols helpers ------------------------------------------------------
 
@@ -212,9 +215,9 @@ data Tip = Tip {
 } deriving (Generic)
 instance FromJSON Tip
 
--- get keyDeposit parameter from protocol
-getProtocolKeyDeposit :: BlockchainNetwork -> IO (Maybe Int)
-getProtocolKeyDeposit bNetwork = do
+-- get protocol parameters 
+getProtocolParams :: BlockchainNetwork -> IO (Maybe ProtocolParams)
+getProtocolParams bNetwork = do
   let netName = network bNetwork
   let netMagic = getNetworkMagic bNetwork
   let netEra = getNetworkEra bNetwork
@@ -224,10 +227,22 @@ getProtocolKeyDeposit bNetwork = do
   r <- waitForProcess ph
   jsonData <- hGetContents rc
   let protocolParams = decode (B8.pack jsonData) :: Maybe ProtocolParams
---  if isJust protocolParams then return $ Just $ keyDeposit $ fromJust protocolParams else return Nothing
+  return protocolParams
+
+-- get minUTxOValue parameter from protocol
+getProtocolMinUTxOValue :: BlockchainNetwork -> IO (Maybe Int)
+getProtocolMinUTxOValue bNetwork = do
+  protocolParams <- getProtocolParams bNetwork
+  if isJust protocolParams then return $ Just $ minUTxOValue $ fromJust protocolParams else return Nothing
+
+-- get keyDeposit parameter from protocol
+getProtocolKeyDeposit :: BlockchainNetwork -> IO (Maybe Int)
+getProtocolKeyDeposit bNetwork = do
+  protocolParams <- getProtocolParams bNetwork
+  if isJust protocolParams then return $ Just $ keyDeposit $ fromJust protocolParams else return Nothing
   -- protocol params changed : no more keyDeposit available
   -- so replace temporarily with hard value
-  return $ Just 2000000
+  -- return $ Just 2000000
 
 -- get protocol parameters
 saveProtocolParameters :: BlockchainNetwork -> FilePath -> IO Bool

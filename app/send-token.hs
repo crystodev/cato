@@ -6,9 +6,10 @@ import Control.Monad (void, when, unless)
 import Data.Maybe ( isJust, isNothing, fromJust, fromMaybe )
 import Baseutils ( capitalized )
 import TokenUtils ( Address, AddressType(Payment), buildPolicyName, BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
-  calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyIdFromTokenId, getPolicyPath, Policy(Policy, policyId), getSKeyFile, saveProtocolParameters )
+  calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyIdFromTokenId, getPolicyPath, Policy(Policy, policyId), 
+  getTokenId, getSKeyFile, saveProtocolParameters )
 import Transaction ( buildSendTransaction, calculateSendFees, getTransactionFile, FileType(..), getUtxoFromWallet, getTokenIdFromName, signSendTransaction,
-  submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
+  submitTransaction, Token(..), Tokens, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 
 type Owner = String
 -- parsing options
@@ -46,7 +47,7 @@ parseSend = SendOptions
     <> help "token" )
   <*> option auto
     ( long "amount"
-    <> short 'm'
+    <> short 'n'
     <> metavar "TOKEN AMOUNT"
     <> help "token amount" )
   <*> option auto
@@ -174,13 +175,15 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount policyName 
       let balances = calculateTokensBalance(tokens utxo)
 
       -- 5. Calculate fees for the transaction
-      minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount mTokenName tokenAmount policyId utxo protocolParametersFile
+      -- let tokenList = ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} | if isNothing mTokenName])
+      let tokenList = if isNothing mTokenName then [] else ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId policyId (fromJust mTokenName)} ])
+      minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList policyId utxo protocolParametersFile
       -- print (fromJust minFee)
 
       when (isJust minFee) $ do
         -- 6. Build actual transaction including correct fees
         let okFeeFile = getTransactionFile mTokenName OkFee
-        rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount mTokenName tokenAmount policyId utxo (fromJust minFee) okFeeFile
+        rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList policyId utxo (fromJust minFee) okFeeFile
         unless rc $ do 
           putStrLn "Failed to build transaction"
 

@@ -4,13 +4,13 @@ import Configuration.Dotenv (loadFile, defaultConfig)
 import Options.Applicative
 import Data.Semigroup ((<>))
 import Control.Monad (void, when, unless)
-import Data.Maybe ( isJust, fromJust )
+import Data.Maybe ( isNothing, isJust, fromJust )
 import Baseutils ( capitalized )
 import TokenUtils ( Address, AddressType(Payment), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
-  buildPolicyName, calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyPath, Policy(Policy, policyId ), getTokenPath, getSKeyFile, 
-  recordToken, saveProtocolParameters )
+  buildPolicyName, calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyPath, Policy(Policy, policyId ), 
+  getTokenPath, getTokenId, getSKeyFile, recordToken, saveProtocolParameters )
 import Transaction ( buildMintTransaction, calculateMintFees, getTransactionFile, FileType(..), getUtxoFromWallet, signMintTransaction,
-  submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
+  submitTransaction, Token(..), Tokens, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 
 type Owner = String
 -- parsing options
@@ -174,13 +174,16 @@ doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath
     -- print balances
 
     -- 5. Calculate fees for the transaction
-    minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) mTokenName tokenAmount mTokenMetadata (policyId (fromJust policy)) utxo protocolParametersFile
+    let polId = policyId (fromJust policy)
+    -- let tokenList = ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} | if isNothing mTokenName])
+    let tokenList = if isNothing mTokenName then [] else ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} ])
+    minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) tokenList mTokenMetadata polId utxo protocolParametersFile
     -- print (fromJust minFee)
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
       let okFeeFile = getTransactionFile mTokenName OkFee
-      rc <- buildMintTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) mTokenName tokenAmount mTokenMetadata (policyId (fromJust policy)) utxo (fromJust minFee) okFeeFile
+      rc <- buildMintTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) tokenList mTokenMetadata polId utxo (fromJust minFee) okFeeFile
       unless rc $ print "Failed to build transaction"
       
       -- 7. Sign the transaction
