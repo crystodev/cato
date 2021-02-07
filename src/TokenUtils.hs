@@ -4,7 +4,8 @@
 module TokenUtils ( buildPolicyName, createKeyPair, createPolicy, Address, AddressType(Payment, Stake), 
   BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), getNetworkMagic, getNetworkEra,
   calculateTokensBalance, getPolicy, getPolicyPath, getPolicyId, getPolicyIdFromTokenId, Policy(..), 
-  getProtocolKeyDeposit, saveProtocolParameters, getAddress, getAddressFile, getSKeyFile, getVKeyFile, getTokenPath, recordToken, Tip(..) ) where
+  getProtocolKeyDeposit, saveProtocolParameters, getAddress, getAddressFile, getSKeyFile, getVKeyFile, getTokenPath, 
+  recordToken, saveMetadata, Tip(..) ) where
 
 import System.Directory ( createDirectoryIfMissing, doesFileExist)
 import System.FilePath ( takeDirectory )
@@ -303,3 +304,11 @@ getSKeyFile addressesPath addressType = getAddressKeyFile addressesPath addressT
 -- give file name for name type verification key
 getVKeyFile :: FilePath -> AddressType -> String -> FilePath
 getVKeyFile addressesPath addressType = getAddressKeyFile addressesPath addressType "verification_key"
+
+-- metadata helpers --------------------------------------------------------------------
+
+metadataFile = "/tmp/metadata.json"
+saveMetadata :: String -> IO FilePath
+saveMetadata jsonData = do 
+  writeFile metadataFile jsonData
+  return metadataFile

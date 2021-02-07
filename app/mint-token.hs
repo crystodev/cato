@@ -18,6 +18,7 @@ data MintOptions = MintOptions
   { owner :: String
   , policy :: String 
   , token :: String 
+  , metadata :: Maybe String
   , amount :: Int 
   , createToken :: Bool
   } deriving (Show)
@@ -45,14 +46,19 @@ parseMint = MintOptions
   <> short 't'
   <> metavar "TOKEN"
   <> help "token" )
+  <*> optional ( strOption
+  ( long "json"
+  <> short 'j'
+  <> metavar "METADATA"
+  <> help "token metadata"))
   <*> option auto
   ( long "amount"
-  <> short 'm'
+  <> short 'n'
   <> metavar "AMOUNT"
   <> help "tokens amount" )
   <*> switch
-  ( short 'c'
-  <> long "create-token"
+  ( long "create-token"
+  <> short 'c'
   <> help "create token if it does not exist")
 
 parseDstName :: Parser DstTypeAddress
@@ -93,6 +99,7 @@ mintToken (Options mintOptions dstTypeAddress) = do
   let ownerName = capitalized $ owner mintOptions
       policyName = policy mintOptions
       tokenName = token mintOptions
+      mTokenMetadata = metadata mintOptions
       tokenAmount = amount mintOptions
       doCreateToken = createToken mintOptions
       policyPath = getPolicyPath addressesPath ownerName policyName policiesFolder
@@ -110,7 +117,7 @@ mintToken (Options mintOptions dstTypeAddress) = do
   
   Control.Monad.when (isJust mSrcAddress && isJust mDstAddress && (doCreateToken || tokenExists)) $ do
     let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
-    doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath (Just tokenName) tokenAmount
+    doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath (Just tokenName) tokenAmount mTokenMetadata
   putStrLn ""
 
 -- get srcAddress from owner
@@ -147,8 +154,8 @@ getDstAddress (DstFile dstFile) addressesPath = do
   return maddress
 
 -- mint amount of token from owner for destination address on given network
-doMint :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> String -> String -> Maybe String -> Int -> IO ()
-doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath mTokenName tokenAmount = do
+doMint :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> String -> String -> Maybe String -> Int -> Maybe String -> IO ()
+doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath mTokenName tokenAmount mTokenMetadata = do
   let protocolParametersFile = "/tmp/protparams.json"
       -- 1. Create a policy for our token
       polName = buildPolicyName policyName mTokenName
@@ -167,13 +174,13 @@ doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath
     -- print balances
 
     -- 5. Calculate fees for the transaction
-    minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) mTokenName tokenAmount (policyId (fromJust policy)) utxo protocolParametersFile
+    minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) mTokenName tokenAmount mTokenMetadata (policyId (fromJust policy)) utxo protocolParametersFile
     -- print (fromJust minFee)
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
       let okFeeFile = getTransactionFile mTokenName OkFee
-      rc <- buildMintTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) mTokenName tokenAmount (policyId (fromJust policy)) utxo (fromJust minFee) okFeeFile
+      rc <- buildMintTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) mTokenName tokenAmount mTokenMetadata (policyId (fromJust policy)) utxo (fromJust minFee) okFeeFile
       unless rc $ print "Failed to build transaction"
       
       -- 7. Sign the transaction
