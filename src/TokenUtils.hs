@@ -5,7 +5,7 @@ module TokenUtils ( buildPolicyName, createKeyPair, createPolicy, Address, Addre
   BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), getNetworkMagic, getNetworkEra,
   calculateTokensBalance, getPolicy, getPolicyPath, getPolicyId, getPolicyIdFromTokenId, getTokenId, Policy(..), 
   getProtocolKeyDeposit, getProtocolMinUTxOValue, saveProtocolParameters, getAddress, getAddressFile, getSKeyFile, getVKeyFile, getTokenPath, 
-  recordToken, saveMetadata, Tip(..) ) where
+  recordTokens, saveMetadata, Tip(..) ) where
 
 import System.Directory ( createDirectoryIfMissing, doesFileExist)
 import System.FilePath ( takeDirectory )
@@ -16,7 +16,7 @@ import Data.Aeson.TH(deriveJSON, defaultOptions, Options(fieldLabelModifier))
 import GHC.Generics
 import qualified Data.ByteString.Lazy.Char8 as B8
 import qualified Data.Map as M
-import Control.Monad( unless)
+import Control.Monad( unless, forM_)
 import Data.Maybe ( isJust, fromJust )
 import Data.List.Split ( splitOn )
 import Data.List (isPrefixOf)
@@ -149,6 +149,9 @@ recordToken policy tokenName = do
     let id = getTokenId (policyId (policy:: Policy)) tokenName
     let tokenInfo = TokenInfo { infoVersion = tokenInfoVersion, name = tokenName, id = id, policyName = policyName (policy:: Policy), policyId = policyId (policy:: Policy)}
     B8.writeFile tokenFile (encode tokenInfo)
+
+recordTokens :: Policy -> [String] -> IO ()
+recordTokens policy = mapM_ (recordToken policy)
 
 -- get token path
 getTokenPath :: FilePath -> String -> FilePath
