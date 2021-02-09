@@ -4,7 +4,7 @@ import Configuration.Dotenv (loadFile, defaultConfig)
 import Options.Applicative
 import Data.Semigroup ((<>))
 import Control.Monad (void, when, unless)
-import Data.Maybe ( isNothing, isJust, fromJust )
+import Data.Maybe ( isNothing, isJust, fromJust, fromMaybe )
 import Baseutils ( capitalized )
 import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
 import Network ( BlockchainNetwork(..) )
@@ -128,8 +128,7 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
   mDstAddress <- getDstAddress dstTypeAddress addressesPath
 
   -- tokens file
-  let tokenList = readTokensFromFile mTokensFileName
-  print tokenList
+  tokenList <- readTokensFromFile mTokensFileName
 
   when (isJust mTokenName) $ do
     let tokenName = fromJust mTokenName
@@ -139,7 +138,7 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
     
     Control.Monad.when (isJust mSrcAddress && isJust mDstAddress && (doCreateToken || tokenExists)) $ do
       let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
-      doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath [tokenName] tokenAmount mTokenMetadata
+      doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath [tokenName] tokenAmount tokenList mTokenMetadata
     putStrLn ""
 
 
@@ -177,8 +176,8 @@ getDstAddress (DstFile dstFile) addressesPath = do
   return maddress
 
 -- mint amount of token from owner for destination address on given network
-doMint :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> String -> String -> [String] -> Int -> Maybe String -> IO ()
-doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath tokenNames tokenAmount mTokenMetadata = do
+doMint :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> String -> String -> [String] -> Int -> [Token] -> Maybe String -> IO ()
+doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath tokenNames tokenAmount tokenList' mTokenMetadata = do
   let protocolParametersFile = "/tmp/protparams.json"
   
   -- policy <- createPolicy polName policyPath
@@ -196,6 +195,14 @@ doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath
 
     -- 5. Calculate fees for the transaction
     let polId = policyId (fromJust policy)
+      
+    print tokenList'
+    let tokens = tokenList' ++ 
+              (if not (null tokenNames)
+                then [Token {tokenName = head tokenNames, tokenAmount=tokenAmount, tokenId = getTokenId polId (head tokenNames) } ]
+                else [])
+    print tokens
+
     --let tokenList = if null tokenNames then [] else [Token { tokenName = head tokenNames, tokenAmount = tokenAmount, tokenId = getTokenId polId (head tokenNames)} ]
     let tokenList = map (\name -> Token { tokenName = name, tokenAmount = tokenAmount, tokenId = getTokenId polId name}) tokenNames
     minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) tokenList mTokenMetadata utxo protocolParametersFile
