@@ -5,7 +5,9 @@ import Data.Maybe ( isJust, fromJust )
 import Baseutils ( capitalized )
 import Control.Monad (void, when)
 import Configuration.Dotenv (loadFile, defaultConfig)
-import TokenUtils ( AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), createKeyPair, createPolicy, getPolicyPath, getPolicyId )
+import Address ( AddressType(Payment, Stake), createKeyPair )
+import Network ( BlockchainNetwork(..) )
+import Policy ( createPolicy, getPolicyPath, getPolicyId )
 import Transaction ( createAddress )
 
 type Owner = String

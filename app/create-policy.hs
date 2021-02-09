@@ -2,11 +2,10 @@ import System.Environment
 import Options.Applicative
 import Data.Semigroup ((<>))
 import Data.Maybe ( isJust, fromJust )
-import Baseutils ( capitalized )
-import TokenUtils ( createPolicy, getPolicyPath, getPolicyId )
 import Control.Monad (void)
 import Configuration.Dotenv (loadFile, defaultConfig)
-
+import Baseutils ( capitalized )
+import Policy ( createPolicy, getPolicyPath, getPolicyId )
 
 type Owner = String
 type Pol = String

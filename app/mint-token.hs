@@ -6,11 +6,13 @@ import Data.Semigroup ((<>))
 import Control.Monad (void, when, unless)
 import Data.Maybe ( isNothing, isJust, fromJust )
 import Baseutils ( capitalized )
-import TokenUtils ( Address, AddressType(Payment), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
-  buildPolicyName, calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyPath, Policy(Policy, policyId ), 
-  getTokenPath, getTokenId, getSKeyFile, recordTokens, saveProtocolParameters )
+import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
+import Network ( BlockchainNetwork(..) )
+import Policy ( buildPolicyName, getPolicy, getPolicyPath, Policy(..) )
+import Protocol ( saveProtocolParameters )
+import TokenUtils ( calculateTokensBalance, getTokenPath, getTokenId, readTokensFromFile, recordTokens, Token(..) )
 import Transaction ( buildMintTransaction, calculateMintFees, getTransactionFile, FileType(..), getUtxoFromWallet, signMintTransaction,
-  submitTransaction, Token(..), Tokens, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
+  submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 
 type Owner = String
 -- parsing options
@@ -125,6 +127,10 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
   -- destination address
   mDstAddress <- getDstAddress dstTypeAddress addressesPath
 
+  -- tokens file
+  let tokenList = readTokensFromFile mTokensFileName
+  print tokenList
+
   when (isJust mTokenName) $ do
     let tokenName = fromJust mTokenName
     tokenExists <- doesFileExist $ getTokenPath policyPath tokenName
@@ -135,6 +141,7 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
       let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
       doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath [tokenName] tokenAmount mTokenMetadata
     putStrLn ""
+
 
 -- get srcAddress from owner
 getSrcAddress :: Owner -> FilePath -> IO (Maybe Address)

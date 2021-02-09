@@ -5,12 +5,13 @@ import Data.Maybe ( isNothing, fromJust )
 import Baseutils ( capitalized )
 import Control.Monad (void, when)
 import Configuration.Dotenv (loadFile, defaultConfig)
-import TokenUtils ( Address, AddressType(Payment, Stake), BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
-  calculateTokensBalance, getAddress, getAddressFile )
 import Transaction ( getUtxoFromWallet, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 import Text.Printf ( printf )
 import Data.List ( unlines )
 import Data.Text.Format.Numbers
+import Address ( Address, AddressType(Payment, Stake), getAddress, getAddressFile )
+import Network ( BlockchainNetwork(..) )
+import TokenUtils ( calculateTokensBalance )
 
 type Owner = String
 

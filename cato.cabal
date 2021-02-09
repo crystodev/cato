@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3083bef42ab020c55b251bc5faeac01c5418d4bae967a2a096f5fc635dc74937
+-- hash: 40b13747beab5188323bf809b4539098c7bd7f3dc47bf8e2141d26caa82dcf4c
 
 name:           cato
 version:        0.1.0.0
@@ -27,9 +27,14 @@ source-repository head
 
 library
   exposed-modules:
+      Address
       Baseutils
+      Network
+      Policy
+      Protocol
       TokenUtils
       Transaction
+      Wallet
   other-modules:
       Paths_cato
   hs-source-dirs:

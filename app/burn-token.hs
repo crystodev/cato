@@ -5,10 +5,13 @@ import Data.Semigroup ((<>))
 import Control.Monad (void, when, unless)
 import Data.Maybe ( isNothing, isJust, fromJust )
 import Baseutils ( capitalized )
-import TokenUtils ( Address, AddressType(Payment), buildPolicyName, BlockchainNetwork(BlockchainNetwork, network, networkMagic, networkEra, networkEnv), 
-  calculateTokensBalance, getAddress, getAddressFile, getPolicy, getPolicyPath, Policy(Policy, policyId), getTokenId, getSKeyFile, saveProtocolParameters )
+import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
+import Network ( BlockchainNetwork(..) )
+import Policy ( buildPolicyName, getPolicy, getPolicyPath, Policy(..) )
+import Protocol ( saveProtocolParameters )
+import TokenUtils ( calculateTokensBalance, getTokenId, Token(..) )
 import Transaction ( buildBurnTransaction, calculateBurnFees, getTransactionFile, FileType(..), getUtxoFromWallet, signBurnTransaction,
-  submitTransaction, Token(..), Tokens, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
+  submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 
 type Owner = String
 -- parsing options
