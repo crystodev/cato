@@ -1,29 +1,39 @@
 {
   "tokens": [
     {
-      "policyName" : "Ale1",
       "tokenName" : "Ale1",
       "tokenAmount" : 1,
-      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale1"
+      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale1",
+      "tokenPolicyName" : "Ale"
     }
 ,   {
       "tokenName" : "Ale2",
       "tokenAmount" : 1,
-      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale2"
+      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale2",
+      "tokenPolicyName" : "Ale"
     }
 ,   {
       "tokenName" : "Ale3",
       "tokenAmount" : 1,
-      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale3"
+      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale3",
+      "tokenPolicyName" : "Ale"
     }
 ,   {
       "tokenName" : "Ale4",
       "tokenAmount" : 1,
-      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale4"
+      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale4",
+      "tokenPolicyName" : "Ale"
     }
 ,   {
       "tokenName" : "Ale5",
       "tokenAmount" : 1,
-      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale5"
+      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale5",
+      "tokenPolicyName" : "Ale"
+    }
+,   {
+      "tokenName" : "Alex1",
+      "tokenAmount" : 2,
+      "tokenId" : "64801d751d960c73f2e4e8a03724ba0540bdbcf371f19040c3b435d9.Alex1",
+      "tokenPolicyName" : "Alex"
     }
   ]}

@@ -1,7 +1,7 @@
 -- policy helpers ---------------------------------------------------------
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveGeneric #-}
-module Policy ( buildPolicyName, createPolicy, getPolicy, getPoliciesPath, getPolicyId, getPolicyIdFromTokenId, 
+module Policy ( buildPolicyName, createPolicy, getPolicy, getPolicies, getPoliciesPath, getPolicyId, getPolicyIdFromTokenId, 
     Policy(..), tokensPathName, signingKeyExt, verificationKeyExt ) where
 
 import System.Directory ( createDirectoryIfMissing, doesFileExist)
@@ -12,7 +12,9 @@ import Data.Aeson (FromJSON, ToJSON, toEncoding, genericToEncoding, decode, enco
 import Data.Aeson.TH (deriveJSON, defaultOptions, Options(fieldLabelModifier))
 import GHC.Generics
 import qualified Data.ByteString.Lazy.Char8 as B8
+import Data.List (nub)
 import Data.List.Split ( splitOn )
+import Data.Maybe ( isJust, fromJust )
 import Wallet ( getAddressPath )
 
 data PolicyScript = PolicyScript
@@ -34,7 +36,7 @@ data Policy = Policy
   , policyId     :: String
   , policyName   :: String
   }
-  deriving Show
+  deriving (Show, Eq) 
 
 -- some constants
 addressExt = ".addr"
@@ -103,9 +105,9 @@ getPolicyId = policyId
 getPolicyIdFromTokenId :: String -> String
 getPolicyIdFromTokenId tokenId = head (splitOn "." tokenId)
 
--- get policy
-getPolicy :: String -> FilePath -> IO (Maybe Policy)
-getPolicy policyName policiesPath = do
+-- get policy by name
+getPolicy :: FilePath -> String -> IO (Maybe Policy)
+getPolicy policiesPath policyName = do
   let policy = buildPolicy policyName policiesPath
   bool <- doesFileExist (policyScript policy)
   if bool then do 
@@ -116,3 +118,10 @@ getPolicy policyName policiesPath = do
     return $ Just $ Policy (policyScript policy) (policyVKey policy) (policySKey policy) (tokensPath policy) (filter (/= '\n') policyId) policyName
   else
     return Nothing
+
+-- get policy list (removing duplicates)
+getPolicies :: FilePath -> [String] -> IO [Policy]
+getPolicies policiesPath policyNames = do
+  mPolicies <- mapM (getPolicy  policiesPath) policyNames
+  let policies = nub [fromJust mPolicy | mPolicy <- mPolicies, isJust mPolicy]
+  return policies

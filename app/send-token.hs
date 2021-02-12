@@ -7,7 +7,7 @@ import Data.Maybe ( isJust, isNothing, fromJust, fromMaybe )
 import Baseutils ( capitalized )
 import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
 import Network ( BlockchainNetwork(..) )
-import Policy ( buildPolicyName, getPolicy, getPolicyIdFromTokenId, getPoliciesPath, Policy(..) )
+import Policy ( buildPolicyName, getPolicy, getPolicyIdFromTokenId, Policy(..) )
 import Protocol ( saveProtocolParameters )
 import TokenUtils ( calculateTokensBalance, getTokenId, Token(..) )
 import Transaction ( buildSendTransaction, calculateSendFees, getTransactionFile, FileType(..), getUtxoFromWallet, getTokenIdFromName, signSendTransaction,
@@ -99,7 +99,6 @@ sendToken (Options sendOptions dstTypeAddress) = do
       --policyName = policy sendOptions
       tokenName = token sendOptions
       tokenAmount = amount sendOptions
-      --policiesPath = getPoliciesPath addressesPath ownerName policyName policiesFolder
       
   -- source address and signing key
   mSrcAddress <- getSrcAddress ownerName addressesPath
@@ -177,7 +176,9 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenName 
       let balances = calculateTokensBalance(tokens utxo)
 
       -- 5. Calculate fees for the transaction
-      let tokenList = [Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId policyId (fromJust mTokenName)} | isJust mTokenName ]
+      let tokenList = [Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, 
+                               tokenId = getTokenId policyId (fromJust mTokenName),
+                               tokenPolicyName = ""} | isJust mTokenName ]
       minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList utxo protocolParametersFile
       -- print (fromJust minFee)
 

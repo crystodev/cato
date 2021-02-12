@@ -3,7 +3,7 @@ import Options.Applicative
 import Data.Semigroup ((<>))
 import Data.Maybe ( isNothing, fromJust )
 import Baseutils ( capitalized )
-import Control.Monad (void, when)
+import Control.Monad (void, when, unless)
 import Configuration.Dotenv (loadFile, defaultConfig)
 import Transaction ( getUtxoFromWallet, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 import Text.Printf ( printf )

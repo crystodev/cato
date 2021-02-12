@@ -1,13 +1,14 @@
+{-# OPTIONS_GHC -Wno-deferred-type-errors #-}
 import System.Environment ( getEnv, lookupEnv )
 import Configuration.Dotenv (loadFile, defaultConfig)
 import Options.Applicative
 import Data.Semigroup ((<>))
 import Control.Monad (void, when, unless)
 import Data.Maybe ( isNothing, isJust, fromJust )
-import Baseutils ( capitalized )
+import Baseutils ( capitalized, formatNumber )
 import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
 import Network ( BlockchainNetwork(..) )
-import Policy ( buildPolicyName, getPolicy, getPoliciesPath, Policy(..) )
+import Policy ( buildPolicyName, getPolicies, getPolicy, getPoliciesPath, Policy(..) )
 import Protocol ( saveProtocolParameters )
 import TokenUtils ( calculateTokensBalance, getTokenId, Token(..) )
 import Transaction ( buildBurnTransaction, calculateBurnFees, getTransactionFile, FileType(..), getUtxoFromWallet, signBurnTransaction,
@@ -107,8 +108,7 @@ doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath mTokenNam
       -- 1. get policy for our token
       polName = buildPolicyName policyName mTokenName
   
-  policy <- getPolicy polName policiesPath
-  -- let policy = getPolicy policyName policiesPath
+  policy <- getPolicy policiesPath polName
   when (isJust policy && tokenAmount /= 0 && isJust mSrcAddress) $ do
     -- 2. Extract protocol parameters (needed for fee calculations)
     saveProtocolParameters bNetwork protocolParametersFile
@@ -121,10 +121,12 @@ doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath mTokenNam
 
     -- 5. Calculate fees for the transaction
     let polId = policyId (fromJust policy)
-    let tokenList = [Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} | isJust mTokenName ]
+    let tokenList = [Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, 
+                      tokenId = getTokenId polId (fromJust mTokenName),
+                      tokenPolicyName = policyName} | isJust mTokenName ]
 
-    minFee <- calculateBurnFees bNetwork (fromJust mSrcAddress) tokenList utxo balances protocolParametersFile
-    -- print (fromJust minFee)
+    policies <- getPolicies policiesPath [tokenPolicyName token | token <- tokenList ]
+    minFee <- calculateBurnFees bNetwork (fromJust mSrcAddress) policies tokenList utxo balances protocolParametersFile
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
@@ -134,9 +136,10 @@ doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath mTokenNam
       
       -- 7. Sign the transaction
       let signFile = getTransactionFile mTokenName Sign
-      signBurnTransaction bNetwork sKeyFile (fromJust policy) okFeeFile signFile
+      signBurnTransaction bNetwork sKeyFile policies okFeeFile signFile
 
       -- 8. Submit the transaction to the blockchain
       rc <- submitTransaction bNetwork signFile
-      -- print signFile
-      return ()
+      when rc $ do
+        putStrLn $ "Tokens minted with " ++ formatNumber (fromJust minFee) ++ " lovelaces fee"
+        putStrLn $ "Tokens : " ++ unwords [tokenName token | token <- tokenList]

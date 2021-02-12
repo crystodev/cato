@@ -11,9 +11,9 @@ import Data.Aeson.TH(deriveJSON, defaultOptions, Options(fieldLabelModifier))
 import GHC.Generics
 import qualified Data.ByteString.Lazy.Char8 as B8
 import qualified Data.Map as M
-import Control.Monad( unless, forM_)
+import Control.Monad( when, unless, forM_)
 import Data.Maybe ( isJust, fromJust )
-import Policy ( Policy(..), getPolicyIdFromTokenId, tokensPathName )
+import Policy ( Policy(..), getPolicy, getPolicyIdFromTokenId, tokensPathName )
 
 -- token info record
 data TokenInfo = TokenInfo {
@@ -36,6 +36,7 @@ data Token = Token {
   tokenName :: String
 , tokenAmount :: Int
 , tokenId :: String
+, tokenPolicyName :: String
 } deriving (Generic, Show, Eq)
 instance FromJSON Token
 instance ToJSON Token where
@@ -49,18 +50,22 @@ instance ToJSON Tokens where
   toEncoding = genericToEncoding defaultOptions
 
 -- record token minting
-recordToken :: String -> Policy -> Token -> IO ()
-recordToken policiesPath policy token = do
+recordToken :: String -> Token -> IO ()
+recordToken policiesPath token = do
   let polId = getPolicyIdFromTokenId (tokenId token)
-  let tokenFile = tokensPath policy ++ tokenName token
-  rc <- doesFileExist tokenFile
-  unless rc $ do
-    let id = getTokenId (policyId (policy::Policy)) (tokenName token)
-    let tokenInfo = TokenInfo { infoVersion = tokenInfoVersion, name = tokenName token, id = id, policyName = policyName (policy:: Policy), policyId = policyId (policy:: Policy)}
-    B8.writeFile tokenFile (encode tokenInfo)
+  mPolicy <- getPolicy policiesPath (tokenPolicyName token)
+  when (isJust mPolicy) $ do
+    let policy = fromJust mPolicy
+    let tokenFile = tokensPath policy ++ tokenName token
+    rc <- doesFileExist tokenFile
+    unless rc $ do
+      let id = getTokenId (policyId (policy::Policy)) (tokenName token)
+      let tokenInfo = TokenInfo { infoVersion = tokenInfoVersion, name = tokenName token, id = id, 
+                                policyName = policyName (policy:: Policy), policyId = policyId (policy:: Policy)}
+      B8.writeFile tokenFile (encode tokenInfo)
 
-recordTokens :: String -> Policy -> [Token] -> IO ()
-recordTokens policiesPath policy = mapM_ (recordToken policiesPath policy)
+recordTokens :: String -> [Token] -> IO ()
+recordTokens policiesPath = mapM_ (recordToken policiesPath)
 
 -- get token path
 getTokenPath :: FilePath -> String -> String -> FilePath
@@ -74,8 +79,6 @@ readTokensFromFile :: Maybe FilePath -> IO [Token]
 readTokensFromFile Nothing = return []
 -- TODO : read data from file
 readTokensFromFile (Just tokensFileName) = do
-  --let jData = Tokens { tokens = [Token {tokenName = "Ale", tokenAmount = 2, tokenId = "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale1"}]}
-  --B8.writeFile "t.json" (encode jData)
   rc <- doesFileExist tokensFileName
   if rc then do
     jsonData <- readFile tokensFileName

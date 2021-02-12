@@ -59,7 +59,7 @@ listFiles path = getDirectoryContents path >>= filterM (doesFileExist . (++) pat
 -- print policy infos
 printPolicyInfo :: String -> FilePath -> String -> IO ()
 printPolicyInfo ownerName policiesPath policyName  = do
-  mPolicy <- getPolicy policyName policiesPath
+  mPolicy <- getPolicy policiesPath policyName
   if isJust mPolicy then do
     let policyPath = policiesPath  ++ policyName ++ "/"
     putStrLn "========================================================================================================="
