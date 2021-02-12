@@ -13,7 +13,7 @@ import qualified Data.ByteString.Lazy.Char8 as B8
 import qualified Data.Map as M
 import Control.Monad( unless, forM_)
 import Data.Maybe ( isJust, fromJust )
-import Policy ( Policy(..), tokensPathName )
+import Policy ( Policy(..), getPolicyIdFromTokenId, tokensPathName )
 
 -- token info record
 data TokenInfo = TokenInfo {
@@ -49,21 +49,22 @@ instance ToJSON Tokens where
   toEncoding = genericToEncoding defaultOptions
 
 -- record token minting
-recordToken :: Policy -> String -> IO ()
-recordToken policy tokenName = do
-  let tokenFile = tokensPath policy ++ tokenName
+recordToken :: String -> Policy -> Token -> IO ()
+recordToken policiesPath policy token = do
+  let polId = getPolicyIdFromTokenId (tokenId token)
+  let tokenFile = tokensPath policy ++ tokenName token
   rc <- doesFileExist tokenFile
   unless rc $ do
-    let id = getTokenId (policyId (policy:: Policy)) tokenName
-    let tokenInfo = TokenInfo { infoVersion = tokenInfoVersion, name = tokenName, id = id, policyName = policyName (policy:: Policy), policyId = policyId (policy:: Policy)}
+    let id = getTokenId (policyId (policy::Policy)) (tokenName token)
+    let tokenInfo = TokenInfo { infoVersion = tokenInfoVersion, name = tokenName token, id = id, policyName = policyName (policy:: Policy), policyId = policyId (policy:: Policy)}
     B8.writeFile tokenFile (encode tokenInfo)
 
-recordTokens :: Policy -> [String] -> IO ()
-recordTokens policy = mapM_ (recordToken policy)
+recordTokens :: String -> Policy -> [Token] -> IO ()
+recordTokens policiesPath policy = mapM_ (recordToken policiesPath policy)
 
 -- get token path
-getTokenPath :: FilePath -> String -> FilePath
-getTokenPath policyPath tokenName = policyPath ++ tokensPathName ++ tokenName
+getTokenPath :: FilePath -> String -> String -> FilePath
+getTokenPath policiesPath policyName tokenName = policiesPath ++ policyName ++ "/" ++ tokensPathName ++ tokenName
 
 getTokenId :: String -> String -> String
 getTokenId policyId tokenName = policyId ++ "." ++ tokenName

@@ -6,7 +6,7 @@ import Baseutils ( capitalized )
 import Control.Monad (void, when, filterM, mapM_ )
 import Configuration.Dotenv (loadFile, defaultConfig )
 import System.Directory ( doesDirectoryExist, getDirectoryContents, doesFileExist )
-import Policy ( getPolicy, getPolicyPath, getPolicyId, Policy(..) )
+import Policy ( getPolicy, getPoliciesPath, getPolicyId, Policy(..) )
 
 type Owner = String
 type Pol = String
@@ -39,13 +39,13 @@ getPolicyInfo (Options owner policyName) = do
   addressPath <- getEnv "ADDRESSES_PATH"
   policiesFolder <- getEnv "POLICIES_FOLDER"
   let ownerName = capitalized owner
-  let policiesPath = getPolicyPath addressPath ownerName "" policiesFolder
+  let policiesPath = getPoliciesPath addressPath ownerName policiesFolder
 
   if policyName /= "" then 
     printPolicyInfo ownerName policiesPath policyName
   else do
-    lpolicies <- listDirs policiesPath 
-    let policies = filter (`notElem` [".", ".."]) lpolicies
+    lPolicies <- listDirs policiesPath 
+    let policies = filter (`notElem` [".", ".."]) lPolicies
     mapM_ (printPolicyInfo ownerName policiesPath) policies
 
 -- list sub folders
@@ -59,9 +59,9 @@ listFiles path = getDirectoryContents path >>= filterM (doesFileExist . (++) pat
 -- print policy infos
 printPolicyInfo :: String -> FilePath -> String -> IO ()
 printPolicyInfo ownerName policiesPath policyName  = do
-  let policyPath = policiesPath  ++ policyName ++ "/"
-  mpolicy <- getPolicy policyName policyPath
+  mpolicy <- getPolicy policyName policiesPath
   if isJust mpolicy then do
+    let policyPath = policiesPath  ++ policyName ++ "/"
     putStrLn "========================================================================================================="
     putStrLn $ "Policy " ++ policyName ++ " owned by " ++ ownerName
     putStrLn "---------------------------------------------------------------------------------------------------------"

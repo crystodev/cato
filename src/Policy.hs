@@ -1,10 +1,11 @@
 -- policy helpers ---------------------------------------------------------
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveGeneric #-}
-module Policy ( buildPolicyName, createPolicy, getPolicy, getPolicyPath, getPolicyId, getPolicyIdFromTokenId, 
+module Policy ( buildPolicyName, createPolicy, getPolicy, getPoliciesPath, getPolicyId, getPolicyIdFromTokenId, 
     Policy(..), tokensPathName, signingKeyExt, verificationKeyExt ) where
 
 import System.Directory ( createDirectoryIfMissing, doesFileExist)
+import System.FilePath ( takeDirectory )
 import System.IO ( hGetContents )
 import System.Process ( createProcess, proc, std_out, StdStream(CreatePipe), waitForProcess )
 import Data.Aeson (FromJSON, ToJSON, toEncoding, genericToEncoding, decode, encode)
@@ -50,25 +51,25 @@ buildPolicyName "" (Just tokenName) = tokenName
 buildPolicyName policyName _ = policyName
 
 -- build Policy full file names
-buildPolicyPath :: String -> String -> Policy
-buildPolicyPath policyName policyPath = Policy {
-    policyScript = policyPath ++ "policy" ++ scriptExt
-  , policyVKey = policyPath ++ "policy" ++ verificationKeyExt
-  , policySKey = policyPath ++ "policy" ++ signingKeyExt
-  , tokensPath = policyPath ++ tokensPathName
+buildPolicy :: String -> String -> Policy
+buildPolicy policyName policyPath = Policy {
+    policyScript = policyPath ++ policyName ++ "/" ++ "policy" ++ scriptExt
+  , policyVKey = policyPath ++ policyName ++ "/" ++ "policy" ++ verificationKeyExt
+  , policySKey = policyPath ++ policyName ++ "/" ++ "policy" ++ signingKeyExt
+  , tokensPath = policyPath ++ policyName ++ "/" ++ tokensPathName
   , policyId =  ""
-  , policyName = ""
+  , policyName = policyName
   }
 
 -- create a Cardano Policy
 createPolicy :: String -> String -> IO (Maybe Policy)
 createPolicy policyName policyPath = do
-  let policy = buildPolicyPath policyName policyPath
+  let policy = buildPolicy policyName policyPath
   -- check if policy script exists
   -- if so returns existing Policy
   bool <- doesFileExist (policyScript policy)
   if not bool then do
-    createDirectoryIfMissing True policyPath
+    createDirectoryIfMissing True (takeDirectory $ policyScript policy)
     -- create policy key files
     let runParams = ["address", "key-gen", "--verification-key-file", policyVKey policy, "--signing-key-file", policySKey policy]
     (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" runParams ){ std_out = CreatePipe }
@@ -89,10 +90,10 @@ createPolicy policyName policyPath = do
   pId <- hGetContents hOut 
   return (Just (policy { policyId = filter (/= '\n') pId, policyName = policyName}::Policy ))
 
--- | get Policy Folder
-getPolicyPath:: FilePath -> String -> String -> FilePath -> FilePath
-getPolicyPath addressPath ownerName "" policiesFolder = getAddressPath addressPath ownerName ++ policiesFolder
-getPolicyPath addressPath ownerName policyName policiesFolder = getAddressPath addressPath ownerName ++ policiesFolder ++ policyName ++ "/"
+
+-- | get Policies Folder
+getPoliciesPath:: FilePath -> String -> FilePath -> FilePath
+getPoliciesPath addressPath ownerName policiesFolder = getAddressPath addressPath ownerName ++ policiesFolder
 
 -- get Policy Id
 getPolicyId:: Policy -> String
@@ -104,8 +105,8 @@ getPolicyIdFromTokenId tokenId = head (splitOn "." tokenId)
 
 -- get policy
 getPolicy :: String -> FilePath -> IO (Maybe Policy)
-getPolicy policyName policyPath = do
-  let policy = buildPolicyPath policyName policyPath
+getPolicy policyName policiesPath = do
+  let policy = buildPolicy policyName policiesPath
   bool <- doesFileExist (policyScript policy)
   if bool then do 
     -- get policy id

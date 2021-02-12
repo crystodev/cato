@@ -8,7 +8,7 @@ import System.Directory ( createDirectoryIfMissing, doesFileExist )
 import System.IO ( hGetContents)
 import System.Process ( createProcess, env, proc, std_out, StdStream(CreatePipe), waitForProcess )
 import Data.Maybe ( isNothing, isJust, fromJust, fromMaybe )
-import Data.List ( delete, foldl', intercalate, isSuffixOf, find )
+import Data.List ( delete, foldl', intercalate, isSuffixOf, find, intersperse )
 import Data.Aeson (decode)
 import qualified Data.ByteString.Lazy.Char8 as B8
 import GHC.Generics
@@ -76,6 +76,15 @@ checkSendTransactionAmount adaAmount tokens transactionType utxo fee keyDeposit
   | otherwise =
     return True
 
+-- compute total amount for token id
+tokenAmountFromTokenList :: String -> [Token] -> Int
+tokenAmountFromTokenList tokId tokenList =
+  sum [tokenAmount token | token <- tokenList, tokenId token == tokId]
+
+-- check if total amount for token 
+hasNegativeAmount :: [(String, Int)] -> Bool
+hasNegativeAmount tokenList = not (null ([token | (token, amount) <- tokenList, amount < 0]))
+
 -- check if ada and token balances are above spending
 checkSendTransactionBalance :: [(String, Int)] -> Int -> Int -> [Token] -> TransactionType -> IO(Bool, [(String, Int)])
 checkSendTransactionBalance tokenValues fee lovelaceAmount tokenList transactionType = do
@@ -88,8 +97,8 @@ checkSendTransactionBalance tokenValues fee lovelaceAmount tokenList transaction
     putStrLn $ "The address does not have " ++ show(fee+lovelaceAmount) ++ " lovelaces ( " ++ show(fee+ div lovelaceAmount 1000000) ++ " ada )" 
     return (False, [("",0)])
   else if transactionType /= Mint && someTokenAmount tokenList then do
-    let balances3 = map (\(t, b) -> if t == fromJust assetId then (t, b-amount) else (t, b)) balances2
-    if snd (head (filter(\(t, b) -> t == fromJust assetId) balances3)) < 0 then do
+    let balances3 = map (\(t, b) -> (t, b - tokenAmountFromTokenList t tokenList)) balances2
+    if hasNegativeAmount balances3 then do
       putStrLn $ "The address does not have " ++ show amount ++ fromJust assetId
       return (False, [("",0)])
     else
@@ -122,20 +131,20 @@ buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmoun
   if bool then do
     let adaId = "lovelace"
     let lovelaceAmount = if adaAmount == 0 && (transactionType == Mint || transactionType == Send) then fromJust keyDeposit else adaAmount * 1000000
-    let assetId = if tokenList /= [] then Just (tokenId $ head tokenList) else Nothing
-    let amount = if tokenList /= [] then tokenAmount $ head tokenList else 0
+    let mintAssets = intercalate " + " [ show (tokenAmount token) ++" "++ tokenId token | token <- tokenList ]
+    -- print mintAssets
     (rc, balances) <- checkSendTransactionBalance (tokens utxo) fee lovelaceAmount tokenList transactionType
     if rc then do
       let txOutSrc = foldl' joinKV srcAddress (reverse balances)
-      let txOutDst = dstAddress ++ "+" ++ show lovelaceAmount ++ " " ++ adaId ++ (if not (someTokenAmount tokenList) then "" else "+" ++ show amount ++ " " ++ fromJust assetId)
+      let txOutDst = dstAddress ++ "+" ++ show lovelaceAmount ++ " " ++ adaId ++ (if not (someTokenAmount tokenList) then "" else "+" ++ mintAssets)
       ttl <- calculateTTL bNetwork
       if isJust ttl then do
         metaFile <- saveMetadata $ fromMaybe "" mTokenMetadata
         let runParams = ["transaction", "build-raw"] ++ getNetworkEra bNetwork ++ ["--fee", show fee] ++ buildTxIn (utxos utxo) ++
               ["--ttl", show (fromJust ttl), "--tx-out", txOutDst, "--tx-out", txOutSrc] ++ 
               (if isJust mTokenMetadata then ["--json-metadata-no-schema", "--metadata-json-file", metaFile] else []) ++
-              (if transactionType == Mint && someTokenAmount tokenList then ["--mint", show amount ++" "++fromJust assetId] else []) ++ ["--out-file", outFile] 
-        print runParams
+              (if transactionType == Mint && someTokenAmount tokenList then ["--mint", mintAssets] else []) ++ ["--out-file", outFile] 
+        -- print runParams
         (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
         r <- waitForProcess ph
         return (r == ExitSuccess )

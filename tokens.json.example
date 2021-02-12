@@ -1,9 +1,29 @@
 {
   "tokens": [
     {
+      "policyName" : "Ale1",
       "tokenName" : "Ale1",
       "tokenAmount" : 1,
       "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale1"
     }
-  ]
-}
+,   {
+      "tokenName" : "Ale2",
+      "tokenAmount" : 1,
+      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale2"
+    }
+,   {
+      "tokenName" : "Ale3",
+      "tokenAmount" : 1,
+      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale3"
+    }
+,   {
+      "tokenName" : "Ale4",
+      "tokenAmount" : 1,
+      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale4"
+    }
+,   {
+      "tokenName" : "Ale5",
+      "tokenAmount" : 1,
+      "tokenId" : "f9d50c0534696c2041a0809e35313939335e847ca8e99e19834df22f.Ale5"
+    }
+  ]}

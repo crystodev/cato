@@ -7,7 +7,7 @@ import Data.Maybe ( isNothing, isJust, fromJust )
 import Baseutils ( capitalized )
 import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
 import Network ( BlockchainNetwork(..) )
-import Policy ( buildPolicyName, getPolicy, getPolicyPath, Policy(..) )
+import Policy ( buildPolicyName, getPolicy, getPoliciesPath, Policy(..) )
 import Protocol ( saveProtocolParameters )
 import TokenUtils ( calculateTokensBalance, getTokenId, Token(..) )
 import Transaction ( buildBurnTransaction, calculateBurnFees, getTransactionFile, FileType(..), getUtxoFromWallet, signBurnTransaction,
@@ -78,7 +78,7 @@ burnToken (Options mintOptions) = do
       policyName = policy mintOptions
       tokenName = token mintOptions
       tokenAmount = amount mintOptions
-      policiesPath = getPolicyPath addressesPath ownerName policyName policiesFolder
+      policiesPath = getPoliciesPath addressesPath ownerName policiesFolder
 
   -- source address and signing key
   mSrcAddress <- getSrcAddress ownerName addressesPath

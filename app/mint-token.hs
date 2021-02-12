@@ -8,7 +8,7 @@ import Data.Maybe ( isNothing, isJust, fromJust, fromMaybe )
 import Baseutils ( capitalized )
 import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
 import Network ( BlockchainNetwork(..) )
-import Policy ( buildPolicyName, getPolicy, getPolicyPath, Policy(..) )
+import Policy ( buildPolicyName, getPolicy, getPoliciesPath, Policy(..) )
 import Protocol ( saveProtocolParameters )
 import TokenUtils ( calculateTokensBalance, getTokenPath, getTokenId, readTokensFromFile, recordTokens, Token(..) )
 import Transaction ( buildMintTransaction, calculateMintFees, getTransactionFile, FileType(..), getUtxoFromWallet, signMintTransaction,
@@ -118,7 +118,7 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
       mTokenName = token tokenAmountOption
       tokenAmount = amount tokenAmountOption
       mTokensFileName = tokensFile tokenAmountOption
-      policyPath = getPolicyPath addressesPath ownerName policyName policiesFolder
+      policiesPath = getPoliciesPath addressesPath ownerName policiesFolder
       
   -- source address and signing key
   mSrcAddress <- getSrcAddress ownerName addressesPath
@@ -128,20 +128,26 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
   mDstAddress <- getDstAddress dstTypeAddress addressesPath
 
   -- tokens file
-  tokenList <- readTokensFromFile mTokensFileName
+  tokenList' <- readTokensFromFile mTokensFileName
 
+  policy <- getPolicy policyName policiesPath
+  let polId = policyId (fromJust policy)
   when (isJust mTokenName) $ do
+    let tokenList = tokenList' ++ 
+                (if isJust mTokenName
+                  then [Token {tokenName = fromJust mTokenName, tokenAmount=tokenAmount, tokenId = getTokenId polId (fromJust mTokenName) } ]
+                  else [])
     let tokenName = fromJust mTokenName
-    tokenExists <- doesFileExist $ getTokenPath policyPath tokenName
+    tokenExists <- doesFileExist $ getTokenPath policiesPath policyName tokenName
     when (not tokenExists && not doCreateToken) $ 
       putStrLn $ "Token " ++ tokenName ++ " does not exist ; use --c option to create it."
-    
-    Control.Monad.when (isJust mSrcAddress && isJust mDstAddress && (doCreateToken || tokenExists)) $ do
+
+--    Control.Monad.when (isJust mSrcAddress && isJust mDstAddress && (doCreateToken || tokenExists)) $ do
+    Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
       let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
-      doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath [tokenName] tokenAmount tokenList mTokenMetadata
+      doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policiesPath tokenList mTokenMetadata
     putStrLn ""
-
-
+  
 -- get srcAddress from owner
 getSrcAddress :: Owner -> FilePath -> IO (Maybe Address)
 getSrcAddress ownerName addressesPath = do
@@ -176,13 +182,14 @@ getDstAddress (DstFile dstFile) addressesPath = do
   return maddress
 
 -- mint amount of token from owner for destination address on given network
-doMint :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> String -> String -> [String] -> Int -> [Token] -> Maybe String -> IO ()
-doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath tokenNames tokenAmount tokenList' mTokenMetadata = do
+doMint :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> String -> String -> [Token] -> Maybe String -> IO ()
+doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policiesPath tokenList mTokenMetadata = do
   let protocolParametersFile = "/tmp/protparams.json"
   
   -- policy <- createPolicy polName policyPath
-  policy <- getPolicy policyName policyPath
-  when (isJust policy && tokenAmount /= 0 && isJust mSrcAddress) $ do
+  policy <- getPolicy policyName policiesPath
+--  when (isJust policy && (tokenAmount /= 0 || not (null tokenList)) && isJust mSrcAddress) $ do
+  when (isJust policy && not (null tokenList) && isJust mSrcAddress) $ do
     -- 2. Extract protocol parameters (needed for fee calculations)
     saveProtocolParameters bNetwork protocolParametersFile
 
@@ -190,28 +197,27 @@ doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath
     utxo <- getUtxoFromWallet bNetwork (fromJust mSrcAddress)
 
     -- 4. Calculate tokens balance
-    let balances = calculateTokensBalance(tokens utxo)
+    --let balances = calculateTokensBalance(tokens utxo)
     -- print balances
 
     -- 5. Calculate fees for the transaction
     let polId = policyId (fromJust policy)
       
-    print tokenList'
-    let tokens = tokenList' ++ 
-              (if not (null tokenNames)
-                then [Token {tokenName = head tokenNames, tokenAmount=tokenAmount, tokenId = getTokenId polId (head tokenNames) } ]
-                else [])
-    print tokens
+    print tokenList
+--    let tokens = tokenList' ++ 
+--             (if not (null tokenNames)
+--                then [Token {tokenName = head tokenNames, tokenAmount=tokenAmount, tokenId = getTokenId polId (head tokenNames) } ]
+--                else [])
+    -- print tokens
 
-    --let tokenList = if null tokenNames then [] else [Token { tokenName = head tokenNames, tokenAmount = tokenAmount, tokenId = getTokenId polId (head tokenNames)} ]
-    let tokenList = map (\name -> Token { tokenName = name, tokenAmount = tokenAmount, tokenId = getTokenId polId name}) tokenNames
+--    let tokenList = tokens
     minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) tokenList mTokenMetadata utxo protocolParametersFile
     -- print (fromJust minFee)
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
-      unless (null tokenNames) $ do
-        let mTokenName = Just (head tokenNames)
+      unless (null tokenList) $ do
+        let mTokenName = Just (tokenName (head tokenList))
         let okFeeFile = getTransactionFile mTokenName OkFee
         rc <- buildMintTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) tokenList mTokenMetadata utxo (fromJust minFee) okFeeFile
         unless rc $ print "Failed to build transaction"
@@ -223,6 +229,6 @@ doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policyPath
         -- 8. Submit the transaction to the blockchain
         rc <- submitTransaction bNetwork signFile
         when rc $ do
-          unless (null tokenNames) $ do
-            recordTokens (fromJust policy) tokenNames
+          unless (null tokenList) $ do
+            recordTokens policiesPath (fromJust policy) tokenList
         -- print rc

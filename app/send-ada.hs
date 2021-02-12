@@ -7,7 +7,6 @@ import Data.Maybe ( isJust, isNothing, fromJust, fromMaybe )
 import Baseutils ( capitalized )
 import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
 import Network ( BlockchainNetwork(..) )
-import Policy ( buildPolicyName, getPolicy, getPolicyIdFromTokenId, getPolicyPath, Policy(..) )
 import Protocol ( saveProtocolParameters )
 import TokenUtils ( calculateTokensBalance )
 import Transaction ( buildSendTransaction, calculateSendFees, getTransactionFile, FileType(..), getUtxoFromWallet, getTokenIdFromName, signSendTransaction,

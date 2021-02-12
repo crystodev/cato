@@ -7,7 +7,7 @@ import Data.Maybe ( isJust, isNothing, fromJust, fromMaybe )
 import Baseutils ( capitalized )
 import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
 import Network ( BlockchainNetwork(..) )
-import Policy ( buildPolicyName, getPolicy, getPolicyIdFromTokenId, getPolicyPath, Policy(..) )
+import Policy ( buildPolicyName, getPolicy, getPolicyIdFromTokenId, getPoliciesPath, Policy(..) )
 import Protocol ( saveProtocolParameters )
 import TokenUtils ( calculateTokensBalance, getTokenId, Token(..) )
 import Transaction ( buildSendTransaction, calculateSendFees, getTransactionFile, FileType(..), getUtxoFromWallet, getTokenIdFromName, signSendTransaction,
@@ -96,10 +96,10 @@ sendToken (Options sendOptions dstTypeAddress) = do
   -- mint owner, policy and token
   let ownerName = capitalized $ owner sendOptions
       adaAmount = ada sendOptions
-      policyName = policy sendOptions
+      --policyName = policy sendOptions
       tokenName = token sendOptions
       tokenAmount = amount sendOptions
-      policiesPath = getPolicyPath addressesPath ownerName policyName policiesFolder
+      --policiesPath = getPoliciesPath addressesPath ownerName policyName policiesFolder
       
   -- source address and signing key
   mSrcAddress <- getSrcAddress ownerName addressesPath
@@ -110,7 +110,7 @@ sendToken (Options sendOptions dstTypeAddress) = do
 
   Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
     let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
-    rc <- doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount policyName policiesPath (Just tokenName) tokenAmount
+    rc <- doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount (Just tokenName) tokenAmount
     unless rc $ putStrLn "Nothing sent"
 
 
@@ -149,8 +149,8 @@ getDstAddress (DstFile dstFile) addressesPath = do
 
 
 -- send amount of token from owner for destination address on given network
-doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> String -> String -> Maybe String -> Int -> IO Bool
-doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount policyName policiesPath mTokenName tokenAmount
+doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> Maybe String -> Int -> IO Bool
+doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenName tokenAmount
   | isNothing mSrcAddress = do
       putStrLn $  "No address found for " ++ ownerName
       return False

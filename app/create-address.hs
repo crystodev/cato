@@ -7,7 +7,6 @@ import Control.Monad (void, when)
 import Configuration.Dotenv (loadFile, defaultConfig)
 import Address ( AddressType(Payment, Stake), createKeyPair )
 import Network ( BlockchainNetwork(..) )
-import Policy ( createPolicy, getPolicyPath, getPolicyId )
 import Transaction ( createAddress )
 
 type Owner = String

@@ -5,7 +5,7 @@ import Data.Maybe ( isJust, fromJust )
 import Control.Monad (void)
 import Configuration.Dotenv (loadFile, defaultConfig)
 import Baseutils ( capitalized )
-import Policy ( createPolicy, getPolicyPath, getPolicyId )
+import Policy ( createPolicy, getPoliciesPath, getPolicyId )
 
 type Owner = String
 type Pol = String
@@ -39,10 +39,10 @@ doCreatePolicy (Options owner policy) = do
   policiesFolder <- getEnv "POLICIES_FOLDER"
   let cOwner = capitalized owner
   putStrLn $ "Creating policy " ++ policy ++ " for " ++ cOwner ++ "\n"
-  let policyPath = getPolicyPath addressPath cOwner policy policiesFolder
-  putStrLn $ "Policy path : " ++ policyPath
+  let policiesPath = getPoliciesPath addressPath cOwner policiesFolder
+  putStrLn $ "Policy path : " ++ policiesPath ++ "/" ++ policy
 
-  mpolicy <- createPolicy cOwner policyPath
+  mpolicy <- createPolicy policy policiesPath
   if isJust mpolicy then do
     putStrLn $ "Policy id : " ++ getPolicyId(fromJust mpolicy)
   else
