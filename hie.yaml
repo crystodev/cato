@@ -39,6 +39,12 @@ cradle:
     - path: "./app/Paths_cato.hs"
       component: "cato:exe:policy-info"
 
+    - path: "./app/send-ada.hs"
+      component: "cato:exe:send-ada"
+
+    - path: "./app/Paths_cato.hs"
+      component: "cato:exe:send-ada"
+
     - path: "./app/send-token.hs"
       component: "cato:exe:send-token"
 

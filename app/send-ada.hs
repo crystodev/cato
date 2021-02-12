@@ -130,7 +130,7 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount
       putStrLn $  "No address found for " ++ ownerName
       return False
   | otherwise = do
-    let protocolParametersFile = "/tmp/protparams.json"
+    let protocolParametersFile = "/tmp/protocolParams.json"
     
     -- 1. Extract protocol parameters (needed for fee calculations)
     saveProtocolParameters bNetwork protocolParametersFile

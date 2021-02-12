@@ -59,15 +59,15 @@ listFiles path = getDirectoryContents path >>= filterM (doesFileExist . (++) pat
 -- print policy infos
 printPolicyInfo :: String -> FilePath -> String -> IO ()
 printPolicyInfo ownerName policiesPath policyName  = do
-  mpolicy <- getPolicy policyName policiesPath
-  if isJust mpolicy then do
+  mPolicy <- getPolicy policyName policiesPath
+  if isJust mPolicy then do
     let policyPath = policiesPath  ++ policyName ++ "/"
     putStrLn "========================================================================================================="
     putStrLn $ "Policy " ++ policyName ++ " owned by " ++ ownerName
     putStrLn "---------------------------------------------------------------------------------------------------------"
     putStrLn $ "Policy path : " ++ policyPath
-    putStrLn $ "Policy id : " ++ getPolicyId(fromJust mpolicy)   
-    printTokensInfo (fromJust mpolicy)
+    putStrLn $ "Policy id : " ++ getPolicyId(fromJust mPolicy)   
+    printTokensInfo (fromJust mPolicy)
   else
     putStrLn $ "No policy " ++ capitalized policyName ++ " found for " ++ ownerName
 
@@ -76,8 +76,8 @@ printTokensInfo :: Policy -> IO ()
 printTokensInfo policy = do
   rc <- doesDirectoryExist (tokensPath policy)
   when rc $ do
-    ltokens  <- listFiles (tokensPath policy)
-    let tokens = filter (`notElem` [".", ".."]) ltokens
+    lTokens  <- listFiles (tokensPath policy)
+    let tokens = filter (`notElem` [".", ".."]) lTokens
     mapM_ printTokenInfo tokens
 
 printTokenInfo :: String -> IO ()

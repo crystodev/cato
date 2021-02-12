@@ -103,7 +103,7 @@ getSrcAddress ownerName addressesPath = do
 -- burn amount of token from owner for destination address on given network
 doBurn :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> String -> String -> Maybe String -> Int -> IO ()
 doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath mTokenName tokenAmount = do
-  let protocolParametersFile = "/tmp/protparams.json"
+  let protocolParametersFile = "/tmp/protocolParams.json"
       -- 1. get policy for our token
       polName = buildPolicyName policyName mTokenName
   
@@ -121,8 +121,8 @@ doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath mTokenNam
 
     -- 5. Calculate fees for the transaction
     let polId = policyId (fromJust policy)
-    -- let tokenList = ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} | if isNothing mTokenName])
-    let tokenList = if isNothing mTokenName then [] else ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} ])
+    let tokenList = [Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} | isJust mTokenName ]
+
     minFee <- calculateBurnFees bNetwork (fromJust mSrcAddress) tokenList utxo balances protocolParametersFile
     -- print (fromJust minFee)
 

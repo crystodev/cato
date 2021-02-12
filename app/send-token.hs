@@ -161,7 +161,7 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenName 
       putStrLn "Token amount must not be null"
       return False
   | otherwise = do
-    let protocolParametersFile = "/tmp/protparams.json"
+    let protocolParametersFile = "/tmp/protocolParams.json"
     
     -- 1. Extract protocol parameters (needed for fee calculations)
     saveProtocolParameters bNetwork protocolParametersFile
@@ -177,8 +177,7 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenName 
       let balances = calculateTokensBalance(tokens utxo)
 
       -- 5. Calculate fees for the transaction
-      -- let tokenList = ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId polId (fromJust mTokenName)} | if isNothing mTokenName])
-      let tokenList = if isNothing mTokenName then [] else ([Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId policyId (fromJust mTokenName)} ])
+      let tokenList = [Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, tokenId = getTokenId policyId (fromJust mTokenName)} | isJust mTokenName ]
       minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList utxo protocolParametersFile
       -- print (fromJust minFee)
 

@@ -134,9 +134,7 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
   let polId = policyId (fromJust policy)
   when (isJust mTokenName) $ do
     let tokenList = tokenList' ++ 
-                (if isJust mTokenName
-                  then [Token {tokenName = fromJust mTokenName, tokenAmount=tokenAmount, tokenId = getTokenId polId (fromJust mTokenName) } ]
-                  else [])
+                [Token {tokenName = fromJust mTokenName, tokenAmount=tokenAmount, tokenId = getTokenId polId (fromJust mTokenName) } | isJust mTokenName ]
     let tokenName = fromJust mTokenName
     tokenExists <- doesFileExist $ getTokenPath policiesPath policyName tokenName
     when (not tokenExists && not doCreateToken) $ 
@@ -184,7 +182,7 @@ getDstAddress (DstFile dstFile) addressesPath = do
 -- mint amount of token from owner for destination address on given network
 doMint :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> String -> String -> [Token] -> Maybe String -> IO ()
 doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policiesPath tokenList mTokenMetadata = do
-  let protocolParametersFile = "/tmp/protparams.json"
+  let protocolParametersFile = "/tmp/protocolParams.json"
   
   -- policy <- createPolicy polName policyPath
   policy <- getPolicy policyName policiesPath
@@ -196,21 +194,11 @@ doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policyName policiesPa
     -- 3. Get UTXOs from our wallet
     utxo <- getUtxoFromWallet bNetwork (fromJust mSrcAddress)
 
-    -- 4. Calculate tokens balance
-    --let balances = calculateTokensBalance(tokens utxo)
-    -- print balances
-
     -- 5. Calculate fees for the transaction
     let polId = policyId (fromJust policy)
       
     print tokenList
---    let tokens = tokenList' ++ 
---             (if not (null tokenNames)
---                then [Token {tokenName = head tokenNames, tokenAmount=tokenAmount, tokenId = getTokenId polId (head tokenNames) } ]
---                else [])
-    -- print tokens
 
---    let tokenList = tokens
     minFee <- calculateMintFees bNetwork (fromJust mSrcAddress) tokenList mTokenMetadata utxo protocolParametersFile
     -- print (fromJust minFee)
 

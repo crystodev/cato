@@ -77,8 +77,8 @@ getInfoAddress (Options owner infoAddress) = do
   let cOwner = capitalized owner
 
   network <- getEnv "NETWORK"
-  snetworkMagic <- getEnv "NETWORK_MAGIC"
-  let networkMagic = read snetworkMagic :: Int
+  sNetworkMagic <- getEnv "NETWORK_MAGIC"
+  let networkMagic = read sNetworkMagic :: Int
   networkEra <- lookupEnv "NETWORK_ERA"
 
   let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }

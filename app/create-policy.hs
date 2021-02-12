@@ -42,8 +42,8 @@ doCreatePolicy (Options owner policy) = do
   let policiesPath = getPoliciesPath addressPath cOwner policiesFolder
   putStrLn $ "Policy path : " ++ policiesPath ++ "/" ++ policy
 
-  mpolicy <- createPolicy policy policiesPath
-  if isJust mpolicy then do
-    putStrLn $ "Policy id : " ++ getPolicyId(fromJust mpolicy)
+  mPolicy <- createPolicy policy policiesPath
+  if isJust mPolicy then do
+    putStrLn $ "Policy id : " ++ getPolicyId(fromJust mPolicy)
   else
     putStrLn $ "Policy " ++ capitalized policy ++ " not created"
