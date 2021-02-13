@@ -18,6 +18,7 @@ type Owner = String
 data SendOptions = SendOptions 
   { owner :: String
   , policy :: String 
+  , metadata :: Maybe String
   , token :: String 
   , amount :: Int
   , ada :: Int
@@ -42,6 +43,11 @@ parseSend = SendOptions
     <> metavar "POLICY"
     <> help "token policy"
     <> value "" )
+  <*> optional ( strOption
+  ( long "json"
+  <> short 'j'
+  <> metavar "METADATA"
+  <> help "token metadata"))
   <*> strOption
     ( long "token"
     <> short 't'
@@ -99,6 +105,7 @@ sendToken (Options sendOptions dstTypeAddress) = do
       --policyName = policy sendOptions
       tokenName = token sendOptions
       tokenAmount = amount sendOptions
+      mTokenMetadata = metadata sendOptions
       
   -- source address and signing key
   mSrcAddress <- getSrcAddress ownerName addressesPath
@@ -109,7 +116,7 @@ sendToken (Options sendOptions dstTypeAddress) = do
 
   Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
     let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
-    rc <- doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount (Just tokenName) tokenAmount
+    rc <- doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount (Just tokenName) tokenAmount mTokenMetadata
     unless rc $ putStrLn "Nothing sent"
 
 
@@ -148,8 +155,8 @@ getDstAddress (DstFile dstFile) addressesPath = do
 
 
 -- send amount of token from owner for destination address on given network
-doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> Maybe String -> Int -> IO Bool
-doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenName tokenAmount
+doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> Maybe String -> Int -> Maybe String -> IO Bool
+doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenName tokenAmount mTokenMetadata
   | isNothing mSrcAddress = do
       putStrLn $  "No address found for " ++ ownerName
       return False
@@ -179,13 +186,13 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenName 
       let tokenList = [Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, 
                                tokenId = getTokenId policyId (fromJust mTokenName),
                                tokenPolicyName = ""} | isJust mTokenName ]
-      minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList utxo protocolParametersFile
+      minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList mTokenMetadata utxo protocolParametersFile
       -- print (fromJust minFee)
 
       when (isJust minFee) $ do
         -- 6. Build actual transaction including correct fees
         let okFeeFile = getTransactionFile mTokenName OkFee
-        rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList utxo (fromJust minFee) okFeeFile
+        rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount tokenList mTokenMetadata utxo (fromJust minFee) okFeeFile
         unless rc $ do 
           putStrLn "Failed to build transaction"
 

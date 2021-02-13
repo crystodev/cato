@@ -116,8 +116,8 @@ buildTransaction Burn bNetwork srcAddress _ _ tokens _ utxo balances fee outFile
   buildBurnTransaction bNetwork srcAddress tokens utxo balances fee outFile
 buildTransaction Mint bNetwork srcAddress dstAddress _ tokens mTokenMetadata utxo _ fee outFile = do
   buildMintTransaction bNetwork srcAddress dstAddress tokens mTokenMetadata utxo fee outFile
-buildTransaction Send bNetwork srcAddress dstAddress adaAmount tokens _ utxo _ fee outFile = do
-  buildSendTransaction bNetwork srcAddress dstAddress adaAmount tokens utxo fee outFile
+buildTransaction Send bNetwork srcAddress dstAddress adaAmount tokens mTokenMetadata utxo _ fee outFile = do
+  buildSendTransaction bNetwork srcAddress dstAddress adaAmount tokens mTokenMetadata utxo fee outFile
 
 
 -- build transfer transaction for token
@@ -220,10 +220,10 @@ buildMintTransaction bNetwork srcAddress dstAddress tokens mTokenMetadata utxo f
     return False
 
 -- build send transaction for token
-buildSendTransaction :: BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Utxo -> Int -> FilePath -> IO Bool 
-buildSendTransaction bNetwork srcAddress dstAddress adaAmount tokens utxo fee draftFile = do
+buildSendTransaction :: BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Maybe String -> Utxo -> Int -> FilePath -> IO Bool 
+buildSendTransaction bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata utxo fee draftFile = do
 --  if isJust token && tokenAmount /= 0 then
-    buildTransferTransaction Send bNetwork srcAddress dstAddress adaAmount tokens Nothing utxo fee draftFile
+    buildTransferTransaction Send bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata utxo fee draftFile
 --  else
 --    return False
 
@@ -259,9 +259,9 @@ calculateMintFees :: BlockchainNetwork -> Address -> [Policy] -> [Token] -> Mayb
 calculateMintFees bNetwork srcAddress policies tokens tokenMetadata utxo = calculateFees Mint bNetwork srcAddress srcAddress 0 policies tokens tokenMetadata utxo []
 
 -- calculate fee for send transaction
-calculateSendFees :: BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Utxo -> FilePath -> IO (Maybe Int)
-calculateSendFees bNetwork srcAddress dstAddress adaAmount tokens utxo = 
-  calculateFees Send bNetwork srcAddress dstAddress adaAmount [] tokens Nothing utxo []
+calculateSendFees :: BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Maybe String -> Utxo -> FilePath -> IO (Maybe Int)
+calculateSendFees bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata utxo = 
+  calculateFees Send bNetwork srcAddress dstAddress adaAmount [] tokens tokenMetadata utxo []
 
 -- calculate network TTL
 calculateTTL :: BlockchainNetwork -> IO (Maybe Int)

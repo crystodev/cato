@@ -16,6 +16,7 @@ type Owner = String
 -- parsing options
 data SendOptions = SendOptions 
   { owner :: String
+  , metadata :: Maybe String
   , ada :: Int
   } deriving (Show)
 data DstTypeAddress = DstName String 
@@ -32,6 +33,11 @@ parseSend = SendOptions
     <> short 'o'
     <> metavar "OWNER"
     <> help "address owner name" )
+  <*> optional ( strOption
+  ( long "json"
+  <> short 'j'
+  <> metavar "METADATA"
+  <> help "token metadata"))
   <*> option auto
     ( long "ada"
     <> metavar "ADA AMOUNT"
@@ -75,6 +81,7 @@ sendToken (Options sendOptions dstTypeAddress) = do
 
   let ownerName = capitalized $ owner sendOptions
       adaAmount = ada sendOptions
+      mTokenMetadata = metadata sendOptions
       
   -- source address and signing key
   mSrcAddress <- getSrcAddress ownerName addressesPath
@@ -85,7 +92,7 @@ sendToken (Options sendOptions dstTypeAddress) = do
 
   Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
     let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
-    rc <- doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount
+    rc <- doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenMetadata
     unless rc $ putStrLn "Nothing sent"
 
 
@@ -124,8 +131,8 @@ getDstAddress (DstFile dstFile) addressesPath = do
 
 
 -- send amount of ADA from owner to destination address on given network
-doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> IO Bool
-doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount 
+doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> Maybe String -> IO Bool
+doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenMetadata
   | isNothing mSrcAddress = do
       putStrLn $  "No address found for " ++ ownerName
       return False
@@ -142,13 +149,13 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount
     let balances = calculateTokensBalance(tokens utxo)
 
     -- 5. Calculate fees for the transaction
-    minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] utxo protocolParametersFile
+    minFee <- calculateSendFees bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] mTokenMetadata utxo protocolParametersFile
     -- print (fromJust minFee)
 
     when (isJust minFee) $ do
       -- 6. Build actual transaction including correct fees
       let okFeeFile = getTransactionFile Nothing OkFee
-      rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] utxo (fromJust minFee) okFeeFile
+      rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] mTokenMetadata utxo (fromJust minFee) okFeeFile
       unless rc $ do 
         putStrLn "Failed to build transaction"
 
