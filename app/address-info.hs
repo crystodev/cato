@@ -8,6 +8,7 @@ import Configuration.Dotenv (loadFile, defaultConfig)
 import Transaction ( getUtxoFromWallet, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
 import Text.Printf ( printf )
 import Data.List ( unlines )
+import Data.List.Split ( splitOn )
 import Data.Text.Format.Numbers
 import Address ( Address, AddressType(Payment, Stake), getAddress, getAddressFile )
 import Network ( BlockchainNetwork(..) )
@@ -21,6 +22,7 @@ data InfoAddress = InfoAddress {
 , stake :: Bool
 , balance :: Bool
 , utxo :: Bool
+, compact :: Bool
 } deriving Show
 
 data Options = Options Owner InfoAddress
@@ -34,6 +36,7 @@ parseInfoAddress = InfoAddress
           <*> switch ( long "stake" <> short 's' <> help "stake address" )
           <*> switch ( long "balance" <> short 'b' <> help "display balances" )
           <*> switch ( long "utxo" <> short 'u' <> help "display utxo" )
+          <*> switch ( long "compact" <> short 'c' <> help "displays in compact mode" )
 
 parseOptions :: Parser Options
 parseOptions = Options <$> parseOwner <*> parseInfoAddress
@@ -54,10 +57,13 @@ printTokenBalance (token, balance) = do
   printf "%-77s%11s" token ( prettyI (Just ' ') balance)
 
 -- display utxo from address
-printUtxo :: BlockchainNetwork -> String -> Address -> IO ()
-printUtxo bNetwork owner address = do
+printUtxo :: Bool -> BlockchainNetwork -> String -> Address -> IO ()
+printUtxo compactMode bNetwork owner address = do
   _utxo <- getUtxoFromWallet bNetwork address
-  putStrLn $ raw _utxo
+  if compactMode then 
+    putStrLn $ unwords [ if '.' `elem` word then drop 50 word else word | word <- splitOn " " (raw _utxo)]
+  else
+    putStrLn $ raw _utxo
 
 main :: IO ()
 main = getInfoAddress =<< execParser opts
@@ -88,6 +94,7 @@ getInfoAddress (Options owner infoAddress) = do
   
   case maddress of
     Just address -> do
+      let compactMode = compact infoAddress
       let address = fromJust maddress
       putStrLn $ "Address : " ++ address
 
@@ -95,5 +102,5 @@ getInfoAddress (Options owner infoAddress) = do
         printBalance bNetwork cOwner address
 
       Control.Monad.when (utxo infoAddress) $ do 
-        printUtxo bNetwork cOwner address
+        printUtxo compactMode bNetwork cOwner address
     _ -> putStrLn $ "No " ++ show addressType ++ " address for " ++ cOwner

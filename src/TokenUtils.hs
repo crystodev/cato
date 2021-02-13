@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 module TokenUtils ( calculateTokensBalance, getTokenId, 
-  getTokenPath, readTokensFromFile, recordTokens, saveMetadata, Token(..) ) where
+  getTokenPath, readTokensFromFile, recordTokens, saveMetadata, Token(..), writeTokensToFile ) where
 
 import System.Directory ( doesFileExist)
 import System.IO ( hGetContents )
@@ -89,6 +89,11 @@ readTokensFromFile (Just tokensFileName) = do
     else
       return []
   else return []
+
+-- write tokens and amount to json file
+writeTokensToFile :: [Token] -> FilePath -> IO ()
+writeTokensToFile tokenList tokensFileName = do
+  B8.writeFile tokensFileName (encode Tokens { tokens = tokenList })
 
 -- compute total balance for each tokens in list [(token,amount)]
 calculateTokensBalance :: [(String, Int)] -> [(String, Int)] 

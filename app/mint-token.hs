@@ -137,10 +137,9 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
     putStrLn $ policyName ++ " : not a valid policy"
   else do
     let polId = policyId (fromJust mPolicy)
-    let tokenList = tokenList' ++ 
-                [Token {tokenName = fromJust mTokenName, tokenAmount=tokenAmount, 
+    let tokenList = [Token {tokenName = fromJust mTokenName, tokenAmount=tokenAmount, 
                   tokenId = getTokenId polId (fromJust mTokenName), 
-                  tokenPolicyName = policyName } | isJust mTokenName ]
+                  tokenPolicyName = policyName } | isJust mTokenName ] ++ tokenList'
     let tokenName = fromJust mTokenName
     tokenExists <- doesFileExist $ getTokenPath policiesPath policyName tokenName
     if not tokenExists && not doCreateToken then 
@@ -148,6 +147,7 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
     else do
   --    Control.Monad.when (isJust mSrcAddress && isJust mDstAddress && (doCreateToken || tokenExists)) $ do
       Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
+        -- print tokenList
         let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
         doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policiesPath tokenList mTokenMetadata
   
@@ -221,4 +221,3 @@ doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policiesPath tokenLis
             recordTokens policiesPath tokenList
             putStrLn $ "Tokens minted with " ++ formatNumber (fromJust minFee) ++ " lovelaces fee"
             putStrLn $ "Tokens : " ++ unwords [tokenName token | token <- tokenList]
-        -- print rc

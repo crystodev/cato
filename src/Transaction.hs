@@ -240,6 +240,7 @@ calculateFees transactionType bNetwork srcAddress dstAddress adaAmount policies 
     let witnessCount = length policies + 1
     let runParams = ["transaction", "calculate-min-fee", "--tx-body-file", draftFile, "--tx-in-count", show(nbUtxos utxo),
           "--tx-out-count", show txOutCount] ++ ["--witness-count", show witnessCount, "--byron-witness-count", "0", "--protocol-params-file", protParamsFile]
+    -- print runParams
     (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
     r <- waitForProcess ph
     if r == ExitSuccess then do
@@ -345,6 +346,7 @@ signTransaction _ _ _ [] _ _ = do
 signTransaction _ bNetwork sKeyFile policies okFeeFile signFile = do
   let runParams = ["transaction", "sign", network bNetwork, show(networkMagic bNetwork), "--signing-key-file", sKeyFile] ++
           signPolicies policies ++ ["--tx-body-file", okFeeFile, "--out-file", signFile]
+  -- print runParams
   (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
   r <- waitForProcess ph
   return ()

@@ -71,7 +71,7 @@ createPolicy policyName policyPath = do
   -- if so returns existing Policy
   bool <- doesFileExist (policyScript policy)
   if not bool then do
-    createDirectoryIfMissing True (takeDirectory $ policyScript policy)
+    createDirectoryIfMissing True (tokensPath policy)
     -- create policy key files
     let runParams = ["address", "key-gen", "--verification-key-file", policyVKey policy, "--signing-key-file", policySKey policy]
     (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" runParams ){ std_out = CreatePipe }

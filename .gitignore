@@ -31,3 +31,7 @@ cabal.project.local~
 
 # Others
 *~
+
+# Project
+
+data/**

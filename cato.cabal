@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 40b13747beab5188323bf809b4539098c7bd7f3dc47bf8e2141d26caa82dcf4c
+-- hash: f059b7bf80cc623f80bd3f56887de864f6cf6fcad9c04354e71b9cc652f76d82
 
 name:           cato
 version:        0.1.0.0
@@ -48,6 +48,7 @@ library
     , dotenv
     , filepath >=1.4 && <2
     , format-numbers
+    , hspec >=2.7 && <3
     , optparse-applicative
     , process >=1.6
     , split
@@ -70,6 +71,7 @@ executable address-info
     , dotenv
     , filepath >=1.4 && <2
     , format-numbers
+    , hspec >=2.7 && <3
     , optparse-applicative
     , process >=1.6
     , split
@@ -92,6 +94,7 @@ executable burn-token
     , dotenv
     , filepath >=1.4 && <2
     , format-numbers
+    , hspec >=2.7 && <3
     , optparse-applicative
     , process >=1.6
     , split
@@ -114,6 +117,7 @@ executable create-address
     , dotenv
     , filepath >=1.4 && <2
     , format-numbers
+    , hspec >=2.7 && <3
     , optparse-applicative
     , process >=1.6
     , split
@@ -136,6 +140,30 @@ executable create-policy
     , dotenv
     , filepath >=1.4 && <2
     , format-numbers
+    , hspec >=2.7 && <3
+    , optparse-applicative
+    , process >=1.6
+    , split
+  default-language: Haskell2010
+
+executable gen-token-file
+  main-is: gen-token-file.hs
+  other-modules:
+      Paths_cato
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson >=1.5
+    , base >=4.7 && <5
+    , bytestring
+    , cato
+    , containers
+    , directory >=1.3 && <2
+    , dotenv
+    , filepath >=1.4 && <2
+    , format-numbers
+    , hspec >=2.7 && <3
     , optparse-applicative
     , process >=1.6
     , split
@@ -158,6 +186,7 @@ executable mint-token
     , dotenv
     , filepath >=1.4 && <2
     , format-numbers
+    , hspec >=2.7 && <3
     , optparse-applicative
     , process >=1.6
     , split
@@ -180,6 +209,7 @@ executable policy-info
     , dotenv
     , filepath >=1.4 && <2
     , format-numbers
+    , hspec >=2.7 && <3
     , optparse-applicative
     , process >=1.6
     , split
@@ -202,6 +232,7 @@ executable send-ada
     , dotenv
     , filepath >=1.4 && <2
     , format-numbers
+    , hspec >=2.7 && <3
     , optparse-applicative
     , process >=1.6
     , split
@@ -224,6 +255,7 @@ executable send-token
     , dotenv
     , filepath >=1.4 && <2
     , format-numbers
+    , hspec >=2.7 && <3
     , optparse-applicative
     , process >=1.6
     , split
@@ -233,6 +265,7 @@ test-suite cato-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      PolicySpec
       Paths_cato
   hs-source-dirs:
       test
@@ -247,6 +280,7 @@ test-suite cato-test
     , dotenv
     , filepath >=1.4 && <2
     , format-numbers
+    , hspec >=2.7 && <3
     , optparse-applicative
     , process >=1.6
     , split
