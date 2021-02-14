@@ -1,43 +1,51 @@
-import System.Environment ( getEnv, lookupEnv )
-import System.Directory ( doesFileExist)
-import Configuration.Dotenv (loadFile, defaultConfig)
-import Options.Applicative
-import Data.Semigroup ((<>))
-import Control.Monad (void, when, unless)
-import Data.Maybe ( isNothing, isJust, fromJust, fromMaybe )
-import Baseutils ( capitalized, formatNumber )
-import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
-import Network ( BlockchainNetwork(..) )
-import Policy ( buildPolicyName, getPolicy, getPolicies, getPoliciesPath, Policy(..) )
-import Protocol ( saveProtocolParameters )
-import TokenUtils ( calculateTokensBalance, getTokenPath, getTokenId, readTokensFromFile, recordTokens, Token(..) )
-import Transaction ( buildMintTransaction, calculateMintFees, getTransactionFile, FileType(..), getUtxoFromWallet, signMintTransaction,
-  submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
+import           Address              (Address (..), AddressType (Payment),
+                                       getAddress, getAddressFile, getSKeyFile)
+import           Baseutils            (capitalized, formatNumber)
+import           Configuration.Dotenv (defaultConfig, loadFile)
+import           Control.Monad        (unless, void, when)
+import           Data.Maybe           (fromJust, fromMaybe, isJust, isNothing)
+import           Data.Semigroup       ((<>))
+import           Network              (BlockchainNetwork (..))
+import           Options.Applicative
+import           Policy               (Policy (..), buildPolicyName,
+                                       getPolicies, getPoliciesPath, getPolicy)
+import           Protocol             (saveProtocolParameters)
+import           System.Directory     (doesFileExist)
+import           System.Environment   (getEnv, lookupEnv)
+import           TokenUtils           (Token (..), calculateTokensBalance,
+                                       getTokenId, getTokenPath,
+                                       readTokensFromFile, recordTokens)
+import           Transaction          (FileType (..),
+                                       Utxo (Utxo, nbUtxos, raw, tokens, utxos),
+                                       buildMintTransaction, calculateMintFees,
+                                       getTransactionFile, getUtxoFromWallet,
+                                       signMintTransaction, submitTransaction)
+import Wallet
+    ( Owner (..) )
 
-type Owner = String
 -- parsing options
 data TokenOptions = TokenAmount TokenAmountOption
                   | TokensFile FilePath
                   deriving (Eq, Show)
 
 data TokenAmountOption = TokenAmountOption
-  { token :: Maybe String
-  , amount :: Int
+  { token      :: Maybe String
+  , amount     :: Int
   , tokensFile :: Maybe FilePath
   } deriving (Eq, Show)
 
-data MintOptions = MintOptions 
-  { owner :: String
-  , policy :: String 
-  , metadata :: Maybe String
+data MintOptions = MintOptions
+  { owner       :: String
+  , policy      :: String
+  , metadata    :: Maybe String
   , createToken :: Bool
- -- , token :: String 
- -- , amount :: Int 
+ -- , token :: String
+ -- , amount :: Int
   } deriving (Show)
 
-data DstTypeAddress = DstName String 
+data DstTypeAddress = DstName String
                     | DstAddress String
-                    | DstFile FilePath 
+                    | DstFile FilePath
                     deriving (Eq, Show)
 
 data Options = Options MintOptions DstTypeAddress TokenAmountOption
@@ -111,7 +119,7 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
   let networkMagic = read sNetworkMagic :: Int
   networkEra <- lookupEnv "NETWORK_ERA"
   -- mint owner, policy and token
-  let ownerName = capitalized $ owner mintOptions
+  let ownerName = Owner (capitalized $ owner mintOptions)
       policyName = policy mintOptions
       mTokenMetadata = metadata mintOptions
       doCreateToken = createToken mintOptions
@@ -119,7 +127,7 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
       tokenAmount = amount tokenAmountOption
       mTokensFileName = tokensFile tokenAmountOption
       policiesPath = getPoliciesPath addressesPath ownerName policiesFolder
-      
+
   -- source address and signing key
   mSrcAddress <- getSrcAddress ownerName addressesPath
   let sKeyFile = getSKeyFile addressesPath Payment ownerName
@@ -137,12 +145,12 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
     putStrLn $ policyName ++ " : not a valid policy"
   else do
     let polId = policyId (fromJust mPolicy)
-    let tokenList = [Token {tokenName = fromJust mTokenName, tokenAmount=tokenAmount, 
-                  tokenId = getTokenId polId (fromJust mTokenName), 
+    let tokenList = [Token {tokenName = fromJust mTokenName, tokenAmount=tokenAmount,
+                  tokenId = getTokenId polId (fromJust mTokenName),
                   tokenPolicyName = policyName } | isJust mTokenName ] ++ tokenList'
     let tokenName = fromJust mTokenName
     tokenExists <- doesFileExist $ getTokenPath policiesPath policyName tokenName
-    if not tokenExists && not doCreateToken then 
+    if not tokenExists && not doCreateToken then
       putStrLn $ "Token " ++ tokenName ++ " does not exist ; use -c option to create it."
     else do
   --    Control.Monad.when (isJust mSrcAddress && isJust mDstAddress && (doCreateToken || tokenExists)) $ do
@@ -150,7 +158,7 @@ mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
         -- print tokenList
         let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
         doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policiesPath tokenList mTokenMetadata
-  
+
 -- get srcAddress from owner
 getSrcAddress :: Owner -> FilePath -> IO (Maybe Address)
 getSrcAddress ownerName addressesPath = do
@@ -158,29 +166,29 @@ getSrcAddress ownerName addressesPath = do
   case maddress of
     Just address -> do
       let srcAddress = fromJust maddress
-      putStrLn $ "Source address : " ++ srcAddress
-    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ ownerName
+      putStrLn $ "Source address : " ++ show srcAddress
+    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ show ownerName
   return maddress
 
 -- get dstAddress depending on type address provided
 getDstAddress :: DstTypeAddress -> FilePath -> IO (Maybe Address)
 getDstAddress (DstName dstName) addressesPath = do
-  maddress <- getAddress $ getAddressFile addressesPath Payment (capitalized dstName)
+  maddress <- getAddress $ getAddressFile addressesPath Payment (Owner $ capitalized $ show dstName)
   case maddress of
     Just address -> do
       let dstAddress = fromJust maddress
-      putStrLn $ "Destination address : " ++ dstAddress
-    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ dstName
+      putStrLn $ "Destination address : " ++ show dstAddress
+    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ show dstName
   return maddress
 getDstAddress (DstAddress dstAddress) addressesPath = do
   putStrLn $ "Destination address : " ++ dstAddress
-  return (Just dstAddress)
+  return (Just $ Address dstAddress)
 getDstAddress (DstFile dstFile) addressesPath = do
   maddress <- getAddress dstFile
   case maddress of
     Just address -> do
       let dstAddress = fromJust maddress
-      putStrLn $ "Destination address : " ++ dstAddress
+      putStrLn $ "Destination address : " ++ show dstAddress
     _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ dstFile
   return maddress
 
@@ -209,7 +217,7 @@ doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policiesPath tokenLis
         let okFeeFile = getTransactionFile mTokenName OkFee
         rc <- buildMintTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) tokenList mTokenMetadata utxo (fromJust minFee) okFeeFile
         unless rc $ print "Failed to build transaction"
-        
+
         -- 7. Sign the transaction
         let signFile = getTransactionFile mTokenName Sign
         signMintTransaction bNetwork sKeyFile policies okFeeFile signFile

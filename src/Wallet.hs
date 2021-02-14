@@ -1,5 +1,8 @@
-module Wallet ( getAddressPath ) where
+module Wallet ( getAddressPath, Owner(..) ) where
+
+newtype Owner = Owner String
+            deriving (Eq, Show)
 
 -- compute address path from addresses path and owner name
-getAddressPath:: FilePath -> String -> FilePath
-getAddressPath addressesPath ownerName = addressesPath ++ ownerName ++ "/"
+getAddressPath:: FilePath -> Owner -> FilePath
+getAddressPath addressesPath ownerName = addressesPath ++ show ownerName ++ "/"

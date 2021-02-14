@@ -1,20 +1,33 @@
-import System.Environment ( getEnv, lookupEnv )
-import Options.Applicative
-import Data.Semigroup ((<>))
-import Data.Maybe ( isNothing, fromJust )
-import Baseutils ( capitalized )
-import Control.Monad (void, when, unless)
-import Configuration.Dotenv (loadFile, defaultConfig)
-import Transaction ( getUtxoFromWallet, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
-import Text.Printf ( printf )
-import Data.List ( unlines )
-import Data.List.Split ( splitOn )
+import Address
+    ( Address (..), AddressType (Payment, Stake), getAddress, getAddressFile )
+import Baseutils
+    ( capitalized )
+import Configuration.Dotenv
+    ( defaultConfig, loadFile )
+import Control.Monad
+    ( unless, void, when )
+import Data.List
+    ( unlines )
+import Data.List.Split
+    ( splitOn )
+import Data.Maybe
+    ( fromJust, isNothing )
+import Data.Semigroup
+    ( (<>) )
 import Data.Text.Format.Numbers
-import Address ( Address, AddressType(Payment, Stake), getAddress, getAddressFile )
-import Network ( BlockchainNetwork(..) )
-import TokenUtils ( calculateTokensBalance )
-
-type Owner = String
+import Network
+    ( BlockchainNetwork (..) )
+import Options.Applicative
+import System.Environment
+    ( getEnv, lookupEnv )
+import Text.Printf
+    ( printf )
+import TokenUtils
+    ( calculateTokensBalance )
+import Transaction
+    ( Utxo (Utxo, nbUtxos, raw, tokens, utxos), getUtxoFromWallet )
+import Wallet
+    ( Owner (..) )
 
 -- parsing options
 data InfoAddress = InfoAddress {
@@ -25,9 +38,11 @@ data InfoAddress = InfoAddress {
 , compact :: Bool
 } deriving Show
 
-data Options = Options Owner InfoAddress
+type OwnerName = String
 
-parseOwner :: Parser Owner
+data Options = Options OwnerName InfoAddress
+
+parseOwner :: Parser OwnerName
 parseOwner = argument str (metavar "OWNER")
 
 parseInfoAddress :: Parser InfoAddress
@@ -42,8 +57,8 @@ parseOptions :: Parser Options
 parseOptions = Options <$> parseOwner <*> parseInfoAddress
 
 -- display balance from address
-printBalance :: BlockchainNetwork -> String -> Address -> IO ()
-printBalance bNetwork owner address = do
+printBalance :: BlockchainNetwork -> Address -> IO ()
+printBalance bNetwork address = do
   _utxo <- getUtxoFromWallet bNetwork address
   let tokens' = calculateTokensBalance $ tokens _utxo
   printf "%32s%52s\n" "Token" "Amount"
@@ -57,10 +72,10 @@ printTokenBalance (token, balance) = do
   printf "%-77s%11s" token ( prettyI (Just ' ') balance)
 
 -- display utxo from address
-printUtxo :: Bool -> BlockchainNetwork -> String -> Address -> IO ()
-printUtxo compactMode bNetwork owner address = do
+printUtxo :: Bool -> BlockchainNetwork -> Address -> IO ()
+printUtxo compactMode bNetwork address = do
   _utxo <- getUtxoFromWallet bNetwork address
-  if compactMode then 
+  if compactMode then
     putStrLn $ unwords [ if '.' `elem` word then drop 50 word else word | word <- splitOn " " (raw _utxo)]
   else
     putStrLn $ raw _utxo
@@ -74,13 +89,13 @@ main = getInfoAddress =<< execParser opts
      <> header "address-info - a simple address info tool" )
 
 getInfoAddress :: Options -> IO ()
-getInfoAddress (Options owner infoAddress) = do
+getInfoAddress (Options ownerName infoAddress) = do
   loadFile defaultConfig
   addressesPath <- getEnv "ADDRESSES_PATH"
   policiesFolder <- getEnv "POLICIES_FOLDER"
   networkSocket <- getEnv "CARDANO_NODE_SOCKET_PATH"
 
-  let cOwner = capitalized owner
+  let owner = Owner (capitalized ownerName)
 
   network <- getEnv "NETWORK"
   sNetworkMagic <- getEnv "NETWORK_MAGIC"
@@ -90,17 +105,17 @@ getInfoAddress (Options owner infoAddress) = do
   let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
 
   let addressType = if stake infoAddress then Stake else Payment
-  maddress <- getAddress $ getAddressFile addressesPath addressType cOwner
-  
+  maddress <- getAddress $ getAddressFile addressesPath addressType owner
+
   case maddress of
     Just address -> do
       let compactMode = compact infoAddress
       let address = fromJust maddress
-      putStrLn $ "Address : " ++ address
+      putStrLn $ "Address : " ++ show address
 
-      Control.Monad.when (balance infoAddress) $ do 
-        printBalance bNetwork cOwner address
+      Control.Monad.when (balance infoAddress) $ do
+        printBalance bNetwork address
 
-      Control.Monad.when (utxo infoAddress) $ do 
-        printUtxo compactMode bNetwork cOwner address
-    _ -> putStrLn $ "No " ++ show addressType ++ " address for " ++ cOwner
+      Control.Monad.when (utxo infoAddress) $ do
+        printUtxo compactMode bNetwork address
+    _ -> putStrLn $ "No " ++ show addressType ++ " address for " ++ show owner

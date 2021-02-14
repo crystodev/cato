@@ -1,20 +1,29 @@
-import System.Environment
+import Baseutils
+    ( capitalized )
+import Configuration.Dotenv
+    ( defaultConfig, loadFile )
+import Control.Monad
+    ( void )
+import Data.Maybe
+    ( fromJust, isJust )
+import Data.Semigroup
+    ( (<>) )
 import Options.Applicative
-import Data.Semigroup ((<>))
-import Data.Maybe ( isJust, fromJust )
-import Control.Monad (void)
-import Configuration.Dotenv (loadFile, defaultConfig)
-import Baseutils ( capitalized )
-import Policy ( createPolicy, getPoliciesPath, getPolicyId )
+import Policy
+    ( createPolicy, getPoliciesPath, getPolicyId )
+import System.Environment
 
-type Owner = String
-type Pol = String
-data Options = Options Owner Pol
+import Wallet
+    ( Owner (..) )
 
-parsePol :: Parser Pol
+type OwnerName = String
+type PolName = String
+data Options = Options OwnerName PolName
+
+parsePol :: Parser PolName
 parsePol = argument str (metavar "POLICY")
 
-parseOwner :: Parser Owner
+parseOwner :: Parser OwnerName
 parseOwner = strOption
           ( long "owner"
          <> short 'o'
@@ -37,8 +46,8 @@ doCreatePolicy (Options owner policy) = do
   loadFile defaultConfig
   addressPath <- getEnv "ADDRESSES_PATH"
   policiesFolder <- getEnv "POLICIES_FOLDER"
-  let cOwner = capitalized owner
-  putStrLn $ "Creating policy " ++ policy ++ " for " ++ cOwner ++ "\n"
+  let cOwner = Owner (capitalized owner)
+  putStrLn $ "Creating policy " ++ policy ++ " for " ++ show cOwner ++ "\n"
   let policiesPath = getPoliciesPath addressPath cOwner policiesFolder
   putStrLn $ "Policy path : " ++ policiesPath ++ "/" ++ policy
 

@@ -2,14 +2,19 @@
 {-# LANGUAGE DeriveGeneric #-}
 module Protocol ( getProtocolKeyDeposit, getProtocolMinUTxOValue, saveProtocolParameters ) where
 
-import System.IO ( hGetContents )
-import System.Process ( createProcess, proc, std_out, StdStream(CreatePipe), waitForProcess )
-import Data.Aeson (FromJSON, ToJSON, toEncoding, genericToEncoding, decode, encode)
-import Data.Aeson.TH (deriveJSON, defaultOptions, Options(fieldLabelModifier))
-import GHC.Generics
+import           Data.Aeson                 (FromJSON, ToJSON, decode, encode,
+                                             genericToEncoding, toEncoding)
+import           Data.Aeson.TH              (Options (fieldLabelModifier),
+                                             defaultOptions, deriveJSON)
 import qualified Data.ByteString.Lazy.Char8 as B8
-import Data.Maybe ( isJust, fromJust )
-import Network (BlockchainNetwork(..), getNetworkEra, getNetworkMagic)
+import           Data.Maybe                 (fromJust, isJust)
+import           GHC.Generics
+import           Network                    (BlockchainNetwork (..),
+                                             getNetworkEra, getNetworkMagic)
+import           System.IO                  (hGetContents)
+import           System.Process             (StdStream (CreatePipe),
+                                             createProcess, proc, std_out,
+                                             waitForProcess)
 
 -- protocol parameters json structure
 data ProtocolVersion = ProtocolVersion {
@@ -24,29 +29,29 @@ newtype ExtraEntropy = ExtraEntropy {
 instance FromJSON ExtraEntropy
 
 data ProtocolParams = ProtocolParams {
-  poolDeposit :: Int
-, protocolVersion :: ProtocolVersion
-, minUTxOValue :: Int
+  poolDeposit           :: Int
+, protocolVersion       :: ProtocolVersion
+, minUTxOValue          :: Int
 , decentralisationParam :: Float
-, maxTxSize :: Int
-, minPoolCost :: Int
-, minFeeA :: Int
-, maxBlockBodySize :: Int
-, minFeeB :: Int
-, eMax :: Int
-, extraEntropy :: ExtraEntropy
-, maxBlockHeaderSize :: Int
-, keyDeposit :: Int
-, nOpt :: Int
-, rho :: Float
-, tau :: Float
-, a0 :: Float
+, maxTxSize             :: Int
+, minPoolCost           :: Int
+, minFeeA               :: Int
+, maxBlockBodySize      :: Int
+, minFeeB               :: Int
+, eMax                  :: Int
+, extraEntropy          :: ExtraEntropy
+, maxBlockHeaderSize    :: Int
+, keyDeposit            :: Int
+, nOpt                  :: Int
+, rho                   :: Float
+, tau                   :: Float
+, a0                    :: Float
 } deriving (Generic, Show)
 instance FromJSON ProtocolParams
 
 
 
--- get protocol parameters 
+-- get protocol parameters
 getProtocolParams :: BlockchainNetwork -> IO (Maybe ProtocolParams)
 getProtocolParams bNetwork = do
   let netName = network bNetwork

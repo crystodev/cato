@@ -3,28 +3,41 @@ module Transaction ( buildBurnTransaction, buildMintTransaction, buildSendTransa
   FileType(Draft, OkFee, Sign), getUtxoFromWallet, getTokenIdFromName,
   signBurnTransaction, signMintTransaction, signSendTransaction, submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens), TransactionType(..) ) where
 
-import GHC.IO.Exception (ExitCode( ExitSuccess ))
-import System.Directory ( createDirectoryIfMissing, doesFileExist )
-import System.IO ( hGetContents)
-import System.Process ( createProcess, env, proc, std_out, StdStream(CreatePipe), waitForProcess )
-import Data.Maybe ( isNothing, isJust, fromJust, fromMaybe )
-import Data.List ( delete, foldl', intercalate, isSuffixOf, find, intersperse )
-import Data.Aeson (decode)
+import           Data.Aeson                 (decode)
 import qualified Data.ByteString.Lazy.Char8 as B8
-import GHC.Generics
+import           Data.List                  (delete, find, foldl', intercalate,
+                                             intersperse, isSuffixOf)
+import           Data.Maybe                 (fromJust, fromMaybe, isJust,
+                                             isNothing)
+import           GHC.Generics
+import           GHC.IO.Exception           (ExitCode (ExitSuccess))
+import           System.Directory           (createDirectoryIfMissing,
+                                             doesFileExist)
+import           System.IO                  (hGetContents)
+import           System.Process             (StdStream (CreatePipe),
+                                             createProcess, env, proc, std_out,
+                                             waitForProcess)
 
-import Address ( Address, AddressType(Payment, Stake), getAddress, getAddressFile, getVKeyFile )
-import Network ( BlockchainNetwork(..), getNetworkMagic, getNetworkEra, Tip(Tip, slotNo) )
-import Policy ( Policy(..) )
-import Protocol ( getProtocolMinUTxOValue )
+import           Address                    (Address,
+                                             AddressType (Payment, Stake),
+                                             getAddress, getAddressFile,
+                                             getVKeyFile)
+import           Network                    (BlockchainNetwork (..),
+                                             Tip (Tip, slotNo), getNetworkEra,
+                                             getNetworkMagic)
+import           Policy                     (Policy (..))
+import           Protocol                   (getProtocolMinUTxOValue)
 
-import TokenUtils ( calculateTokensBalance, getTokenId, saveMetadata, Token(..) )
+import           TokenUtils                 (Token (..), calculateTokensBalance,
+                                             getTokenId, saveMetadata)
 
+import Wallet
+    ( Owner (..) )
 data Utxo = Utxo {
-    raw :: String
-  , utxos :: [String]
+    raw     :: String
+  , utxos   :: [String]
   , nbUtxos :: Int
-  , tokens :: [(String, Int)]
+  , tokens  :: [(String, Int)]
 } deriving (Show)
 
 data TransactionType = Burn | Mint | Send  deriving (Eq, Show)
@@ -35,9 +48,9 @@ data FileType = Draft | OkFee | Sign
 getTransactionFileExt :: FileType -> String
 getTransactionFileExt Draft = ".txBody.draft"
 getTransactionFileExt OkFee = ".txBody.ok-fee"
-getTransactionFileExt Sign = ".tx.sign"
+getTransactionFileExt Sign  = ".tx.sign"
 
-getTransactionFile :: Maybe String -> FileType -> FilePath 
+getTransactionFile :: Maybe String -> FileType -> FilePath
 getTransactionFile Nothing fileType = "/tmp/lovelace" ++ getTransactionFileExt fileType
 getTransactionFile (Just token) fileType = "/tmp/" ++ "token" ++ getTransactionFileExt fileType
 
@@ -55,8 +68,8 @@ checkTokensAmount = all (\token -> tokenAmount token >= 0)
 someTokenAmount :: [Token] -> Bool
 someTokenAmount = any (\token -> tokenAmount token > 0)
 
--- check if ada and token amount are enough for transaction 
-checkSendTransactionAmount :: Int -> [Token] -> TransactionType -> Utxo -> Int -> Maybe Int -> IO Bool 
+-- check if ada and token amount are enough for transaction
+checkSendTransactionAmount :: Int -> [Token] -> TransactionType -> Utxo -> Int -> Maybe Int -> IO Bool
 checkSendTransactionAmount adaAmount tokens transactionType utxo fee minUTxOValue
   | adaAmount < 0 || not (checkTokensAmount tokens) = do
     putStrLn "Cannot send negative amount"
@@ -69,7 +82,7 @@ checkSendTransactionAmount adaAmount tokens transactionType utxo fee minUTxOValu
     return False
   | isNothing minUTxOValue = do
     putStrLn "No minUTxOValue value found"
-    return False    
+    return False
   | adaAmount /=0 && adaAmount * 1000000 < fromJust minUTxOValue && fee /= 0 = do
     putStrLn $ "Too few lovelace for transaction " ++ show adaAmount ++ " ADA ; you need at least " ++ show (fromJust minUTxOValue) ++ " lovelace for transaction"
     return False
@@ -81,7 +94,7 @@ tokenAmountFromTokenList :: String -> [Token] -> Int
 tokenAmountFromTokenList tokId tokenList =
   sum [tokenAmount token | token <- tokenList, tokenId token == tokId]
 
--- check if total amount for token 
+-- check if total amount for token
 hasNegativeAmount :: [(String, Int)] -> Bool
 hasNegativeAmount tokenList = not (null ([token | (token, amount) <- tokenList, amount < 0]))
 
@@ -94,7 +107,7 @@ checkSendTransactionBalance tokenValues fee lovelaceAmount tokenList transaction
   let balances = calculateTokensBalance tokenValues
   let balances2 = map (\(t, b) -> if t == adaId then (t, b-fee-lovelaceAmount) else (t, b)) balances
   if snd (head (filter(\(t, b) -> t == adaId) balances2)) < 0 then do
-    putStrLn $ "The address does not have " ++ show(fee+lovelaceAmount) ++ " lovelaces ( " ++ show(fee+ div lovelaceAmount 1000000) ++ " ada )" 
+    putStrLn $ "The address does not have " ++ show(fee+lovelaceAmount) ++ " lovelaces ( " ++ show(fee+ div lovelaceAmount 1000000) ++ " ada )"
     return (False, [("",0)])
   else if transactionType /= Mint && someTokenAmount tokenList then do
     let balances3 = map (\(t, b) -> (t, b - tokenAmountFromTokenList t tokenList)) balances2
@@ -111,7 +124,7 @@ joinKV :: String -> (String,Int) -> String
 joinKV acc (key, value) = acc ++ " +" ++ show value ++ " " ++ key
 
 -- build transaction
-buildTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Maybe String -> Utxo -> [(String,Int)] -> Int -> FilePath -> IO Bool 
+buildTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Maybe String -> Utxo -> [(String,Int)] -> Int -> FilePath -> IO Bool
 buildTransaction Burn bNetwork srcAddress _ _ tokens _ utxo balances fee outFile = do
   buildBurnTransaction bNetwork srcAddress tokens utxo balances fee outFile
 buildTransaction Mint bNetwork srcAddress dstAddress _ tokens mTokenMetadata utxo _ fee outFile = do
@@ -119,17 +132,16 @@ buildTransaction Mint bNetwork srcAddress dstAddress _ tokens mTokenMetadata utx
 buildTransaction Send bNetwork srcAddress dstAddress adaAmount tokens mTokenMetadata utxo _ fee outFile = do
   buildSendTransaction bNetwork srcAddress dstAddress adaAmount tokens mTokenMetadata utxo fee outFile
 
-
 -- build transfer transaction for token
 buildTxIn :: [String] -> [String]
 buildTxIn utxos = concat ["--tx-in":[u] | u <- utxos]
 
 buildTxOut :: Address -> Address -> String -> String -> [String]
 buildTxOut srcAddress dstAddress txOutSrc txOutDst
-  | srcAddress == dstAddress = ["--tx-out", srcAddress ++ txOutSrc ++ txOutDst]
-  | otherwise = ["--tx-out", srcAddress ++ txOutSrc, "--tx-out", dstAddress ++ txOutDst]
+  | srcAddress == dstAddress = ["--tx-out", show srcAddress ++ txOutSrc ++ txOutDst]
+  | otherwise = ["--tx-out", show srcAddress ++ txOutSrc, "--tx-out", show dstAddress ++ txOutDst]
 
-buildTransferTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Maybe String -> Utxo -> Int -> FilePath -> IO Bool 
+buildTransferTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Maybe String -> Utxo -> Int -> FilePath -> IO Bool
 buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmount tokenList mTokenMetadata utxo fee outFile = do
   minUTxOValue <- getProtocolMinUTxOValue bNetwork
   bool <- checkSendTransactionAmount adaAmount tokenList transactionType utxo fee minUTxOValue
@@ -147,9 +159,9 @@ buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmoun
       if isJust ttl then do
         metaFile <- saveMetadata $ fromMaybe "" mTokenMetadata
         let runParams = ["transaction", "build-raw"] ++ getNetworkEra bNetwork ++ ["--fee", show fee] ++ buildTxIn (utxos utxo) ++
-              ["--ttl", show (fromJust ttl)] ++ txOut ++ 
+              ["--ttl", show (fromJust ttl)] ++ txOut ++
               (if isJust mTokenMetadata then ["--json-metadata-no-schema", "--metadata-json-file", metaFile] else []) ++
-              (if transactionType == Mint && someTokenAmount tokenList then ["--mint", mintAssets] else []) ++ ["--out-file", outFile] 
+              (if transactionType == Mint && someTokenAmount tokenList then ["--mint", mintAssets] else []) ++ ["--out-file", outFile]
         -- print runParams
         (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
         r <- waitForProcess ph
@@ -162,7 +174,7 @@ buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmoun
       return False
 
 -- check burnTransaction
-checkBurnTransaction :: [Token] -> Utxo -> [(String, Int)] -> IO (Maybe String) 
+checkBurnTransaction :: [Token] -> Utxo -> [(String, Int)] -> IO (Maybe String)
 checkBurnTransaction tokenList utxo balances
   | null tokenList = do
     putStrLn "No token name"
@@ -187,7 +199,7 @@ checkBurnTransaction tokenList utxo balances
         return (Just tId)
 
 -- build burn transaction for token
-buildBurnTransaction :: BlockchainNetwork -> Address -> [Token] -> Utxo -> [(String,Int)] -> Int -> FilePath -> IO Bool 
+buildBurnTransaction :: BlockchainNetwork -> Address -> [Token] -> Utxo -> [(String,Int)] -> Int -> FilePath -> IO Bool
 buildBurnTransaction bNetwork srcAddress tokenList utxo balances fee outFile = do
   assetId <- checkBurnTransaction tokenList utxo balances
   if isJust assetId then do
@@ -195,11 +207,11 @@ buildBurnTransaction bNetwork srcAddress tokenList utxo balances fee outFile = d
     let adaId = "lovelace"
     (rc, balances) <- checkSendTransactionBalance (tokens utxo) fee 0 tokenList Burn
     if rc then do
-      let txOutSrc = foldl' joinKV srcAddress (reverse balances)
+      let txOutSrc = foldl' joinKV (show srcAddress) (reverse balances)
       ttl <- calculateTTL bNetwork
       if isJust ttl then do
         let runParams = ["transaction", "build-raw"] ++ getNetworkEra bNetwork ++ ["--fee", show fee] ++ buildTxIn (utxos utxo) ++
-              ["--ttl", show (fromJust ttl), "--tx-out", txOutSrc] ++ 
+              ["--ttl", show (fromJust ttl), "--tx-out", txOutSrc] ++
               ["--mint", show (-(tokenAmount $ head tokenList)) ++" "++fromJust assetId] ++ ["--out-file", outFile]
         (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
         r <- waitForProcess ph
@@ -212,7 +224,7 @@ buildBurnTransaction bNetwork srcAddress tokenList utxo balances fee outFile = d
     return False
 
 -- build mint transaction for token
-buildMintTransaction :: BlockchainNetwork -> Address -> Address -> [Token] -> Maybe String -> Utxo -> Int -> FilePath -> IO Bool 
+buildMintTransaction :: BlockchainNetwork -> Address -> Address -> [Token] -> Maybe String -> Utxo -> Int -> FilePath -> IO Bool
 buildMintTransaction bNetwork srcAddress dstAddress tokens mTokenMetadata utxo fee draftFile = do
   if someTokenAmount tokens then
     buildTransferTransaction Mint bNetwork srcAddress dstAddress 0 tokens mTokenMetadata utxo fee draftFile
@@ -220,7 +232,7 @@ buildMintTransaction bNetwork srcAddress dstAddress tokens mTokenMetadata utxo f
     return False
 
 -- build send transaction for token
-buildSendTransaction :: BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Maybe String -> Utxo -> Int -> FilePath -> IO Bool 
+buildSendTransaction :: BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Maybe String -> Utxo -> Int -> FilePath -> IO Bool
 buildSendTransaction bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata utxo fee draftFile = do
 --  if isJust token && tokenAmount /= 0 then
     buildTransferTransaction Send bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata utxo fee draftFile
@@ -246,9 +258,9 @@ calculateFees transactionType bNetwork srcAddress dstAddress adaAmount policies 
     if r == ExitSuccess then do
       rc <- hGetContents hOut
       let mintFee = read(head (words rc))::Int
-      return (Just mintFee)   
+      return (Just mintFee)
     else
-      return Nothing 
+      return Nothing
 
 -- calculate fee for burn transaction
 calculateBurnFees :: BlockchainNetwork -> Address -> [Policy] -> [Token] -> Utxo -> [(String,Int)] -> FilePath -> IO (Maybe Int)
@@ -260,7 +272,7 @@ calculateMintFees bNetwork srcAddress policies tokens tokenMetadata utxo = calcu
 
 -- calculate fee for send transaction
 calculateSendFees :: BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Maybe String -> Utxo -> FilePath -> IO (Maybe Int)
-calculateSendFees bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata utxo = 
+calculateSendFees bNetwork srcAddress dstAddress adaAmount tokens tokenMetadata utxo =
   calculateFees Send bNetwork srcAddress dstAddress adaAmount [] tokens tokenMetadata utxo []
 
 -- calculate network TTL
@@ -275,18 +287,18 @@ calculateTTL bNetwork = do
   if isJust tip then return $ Just $ slotNo (fromJust tip) + forwardSlot  else return Nothing
 
 -- create address for owner
-createAddress :: BlockchainNetwork -> AddressType -> FilePath -> String -> IO (Maybe Address) 
+createAddress :: BlockchainNetwork -> AddressType -> FilePath -> Owner -> IO (Maybe Address)
 createAddress bNetwork addressType addressesPath ownerName = do
   let vkFile = getVKeyFile addressesPath addressType ownerName
   boolVK <- doesFileExist vkFile
   if not boolVK then do
-    putStrLn $ "verification key missing for " ++ ownerName
+    putStrLn $ "verification key missing for " ++ show ownerName
     return Nothing
   else do
     let addrFile = getAddressFile addressesPath addressType ownerName
     boolAddress <- doesFileExist addrFile
     if boolAddress then do
-      putStrLn $ "address already exists for " ++ ownerName
+      putStrLn $ "address already exists for " ++ show ownerName
       getAddress addrFile
     else do
       let netName = network bNetwork
@@ -305,7 +317,7 @@ getUtxoFromWallet bNetwork address = do
   let netMagic = getNetworkMagic bNetwork
   let netEra = getNetworkEra bNetwork
   let envParam = Just [("CARDANO_NODE_SOCKET_PATH", networkEnv bNetwork)]
-  let runParams = ["query", "utxo", netName] ++ netMagic ++ netEra ++ ["--address", address]
+  let runParams = ["query", "utxo", netName] ++ netMagic ++ netEra ++ ["--address", show address]
   (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams ) { env = envParam } {std_out = CreatePipe }
   r <- waitForProcess ph
   raw <- hGetContents hOut
@@ -323,8 +335,8 @@ getUtxoFromWallet bNetwork address = do
 
 -- parse transactions list
 parseTokens :: [String] -> [(String, Int)]
-parseTokens [] = []
-parseTokens [x] = []
+parseTokens []       = []
+parseTokens [x]      = []
 parseTokens (x:y:xs) = (y,read x::Int):parseTokens xs
 
 -- build sign policy list

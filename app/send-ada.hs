@@ -1,27 +1,34 @@
-import System.Environment ( getEnv, lookupEnv )
-import Configuration.Dotenv (loadFile, defaultConfig)
-import Options.Applicative
-import Data.Semigroup ((<>))
-import Control.Monad (void, when, unless)
-import Data.Maybe ( isJust, isNothing, fromJust, fromMaybe )
-import Baseutils ( capitalized )
-import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
-import Network ( BlockchainNetwork(..) )
-import Protocol ( saveProtocolParameters )
-import TokenUtils ( calculateTokensBalance )
-import Transaction ( buildSendTransaction, calculateSendFees, getTransactionFile, FileType(..), getUtxoFromWallet, getTokenIdFromName, signSendTransaction,
-  submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
+import           Address              (Address (..), AddressType (Payment),
+                                       getAddress, getAddressFile, getSKeyFile)
+import           Baseutils            (capitalized)
+import           Configuration.Dotenv (defaultConfig, loadFile)
+import           Control.Monad        (unless, void, when)
+import           Data.Maybe           (fromJust, fromMaybe, isJust, isNothing)
+import           Data.Semigroup       ((<>))
+import           Network              (BlockchainNetwork (..))
+import           Options.Applicative
+import           Protocol             (saveProtocolParameters)
+import           System.Environment   (getEnv, lookupEnv)
+import           TokenUtils           (calculateTokensBalance)
+import           Transaction          (FileType (..),
+                                       Utxo (Utxo, nbUtxos, raw, tokens, utxos),
+                                       buildSendTransaction, calculateSendFees,
+                                       getTokenIdFromName, getTransactionFile,
+                                       getUtxoFromWallet, signSendTransaction,
+                                       submitTransaction)
 
-type Owner = String
+import Wallet
+    ( Owner (..) )
+
 -- parsing options
-data SendOptions = SendOptions 
-  { owner :: String
+data SendOptions = SendOptions
+  { owner    :: String
   , metadata :: Maybe String
-  , ada :: Int
+  , ada      :: Int
   } deriving (Show)
-data DstTypeAddress = DstName String 
+data DstTypeAddress = DstName String
                     | DstAddress String
-                    | DstFile FilePath 
+                    | DstFile FilePath
                     deriving (Eq, Show)
 
 data Options = Options SendOptions DstTypeAddress
@@ -41,7 +48,7 @@ parseSend = SendOptions
   <*> option auto
     ( long "ada"
     <> metavar "ADA AMOUNT"
-    <> help "ada amount" 
+    <> help "ada amount"
     <> value 0)
 
 parseDstName :: Parser DstTypeAddress
@@ -79,10 +86,10 @@ sendToken (Options sendOptions dstTypeAddress) = do
   let networkMagic = read sNetworkMagic :: Int
   networkEra <- lookupEnv "NETWORK_ERA"
 
-  let ownerName = capitalized $ owner sendOptions
+  let ownerName = Owner (capitalized $ owner sendOptions)
       adaAmount = ada sendOptions
       mTokenMetadata = metadata sendOptions
-      
+
   -- source address and signing key
   mSrcAddress <- getSrcAddress ownerName addressesPath
   let sKeyFile = getSKeyFile addressesPath Payment ownerName
@@ -103,29 +110,29 @@ getSrcAddress ownerName addressesPath = do
   case maddress of
     Just address -> do
       let srcAddress = fromJust maddress
-      putStrLn $ "Source address : " ++ srcAddress
-    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ ownerName
+      putStrLn $ "Source address : " ++ show srcAddress
+    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ show ownerName
   return maddress
 
 -- get dstAddress depending on type address provided
 getDstAddress :: DstTypeAddress -> FilePath -> IO (Maybe Address)
 getDstAddress (DstName dstName) addressesPath = do
-  maddress <- getAddress $ getAddressFile addressesPath Payment (capitalized dstName)
+  maddress <- getAddress $ getAddressFile addressesPath Payment (Owner $ capitalized dstName)
   case maddress of
     Just address -> do
       let dstAddress = fromJust maddress
-      putStrLn $ "Destination address : " ++ dstAddress
+      putStrLn $ "Destination address : " ++ show dstAddress
     _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ dstName
   return maddress
 getDstAddress (DstAddress dstAddress) addressesPath = do
-  putStrLn $ "Destination address : " ++ dstAddress
-  return (Just dstAddress)
+  putStrLn $ "Destination address : " ++ show dstAddress
+  return (Just $ Address dstAddress)
 getDstAddress (DstFile dstFile) addressesPath = do
   maddress <- getAddress dstFile
   case maddress of
     Just address -> do
       let dstAddress = fromJust maddress
-      putStrLn $ "Destination address : " ++ dstAddress
+      putStrLn $ "Destination address : " ++ show dstAddress
     _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ dstFile
   return maddress
 
@@ -134,11 +141,11 @@ getDstAddress (DstFile dstFile) addressesPath = do
 doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> Maybe String -> IO Bool
 doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenMetadata
   | isNothing mSrcAddress = do
-      putStrLn $  "No address found for " ++ ownerName
+      putStrLn $  "No address found for " ++ show ownerName
       return False
   | otherwise = do
     let protocolParametersFile = "/tmp/protocolParams.json"
-    
+
     -- 1. Extract protocol parameters (needed for fee calculations)
     saveProtocolParameters bNetwork protocolParametersFile
 
@@ -156,7 +163,7 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenMetad
       -- 6. Build actual transaction including correct fees
       let okFeeFile = getTransactionFile Nothing OkFee
       rc <- buildSendTransaction bNetwork (fromJust mSrcAddress) (fromJust mDstAddress) adaAmount [] mTokenMetadata utxo (fromJust minFee) okFeeFile
-      unless rc $ do 
+      unless rc $ do
         putStrLn "Failed to build transaction"
 
       -- 7. Sign the transaction

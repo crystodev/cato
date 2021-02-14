@@ -1,36 +1,56 @@
 {-# OPTIONS_GHC -Wno-deferred-type-errors #-}
-import System.Environment ( getEnv, lookupEnv )
-import Configuration.Dotenv (loadFile, defaultConfig)
+import Address
+    ( Address, AddressType (Payment), getAddress, getAddressFile, getSKeyFile )
+import Baseutils
+    ( capitalized, formatNumber )
+import Configuration.Dotenv
+    ( defaultConfig, loadFile )
+import Control.Monad
+    ( unless, void, when )
+import Data.Maybe
+    ( fromJust, isJust, isNothing )
+import Data.Semigroup
+    ( (<>) )
+import Network
+    ( BlockchainNetwork (..) )
 import Options.Applicative
-import Data.Semigroup ((<>))
-import Control.Monad (void, when, unless)
-import Data.Maybe ( isNothing, isJust, fromJust )
-import Baseutils ( capitalized, formatNumber )
-import Address ( Address, AddressType(Payment), getAddress, getAddressFile, getSKeyFile )
-import Network ( BlockchainNetwork(..) )
-import Policy ( buildPolicyName, getPolicies, getPolicy, getPoliciesPath, Policy(..) )
-import Protocol ( saveProtocolParameters )
-import TokenUtils ( calculateTokensBalance, getTokenId, Token(..) )
-import Transaction ( buildBurnTransaction, calculateBurnFees, getTransactionFile, FileType(..), getUtxoFromWallet, signBurnTransaction,
-  submitTransaction, Utxo(Utxo, raw, utxos, nbUtxos, tokens) )
+import Policy
+    ( Policy (..), buildPolicyName, getPolicies, getPoliciesPath, getPolicy )
+import Protocol
+    ( saveProtocolParameters )
+import System.Environment
+    ( getEnv, lookupEnv )
+import TokenUtils
+    ( Token (..), calculateTokensBalance, getTokenId )
+import Transaction
+    ( FileType (..)
+    , Utxo (Utxo, nbUtxos, raw, tokens, utxos)
+    , buildBurnTransaction
+    , calculateBurnFees
+    , getTransactionFile
+    , getUtxoFromWallet
+    , signBurnTransaction
+    , submitTransaction
+    )
+import Wallet
+    ( Owner (..) )
 
-type Owner = String
 -- parsing options
-data MintOptions = MintOptions 
-  { owner :: String
-  , policy :: String 
-  , token :: String 
-  , amount :: Int 
+data BurnOptions = BurnOptions
+  { ownerName  :: String
+  , policy :: String
+  , token  :: String
+  , amount :: Int
   } deriving (Show)
-data DstTypeAddress = DstName String 
+data DstTypeAddress = DstName String
                     | DstAddress String
-                    | DstFile FilePath 
+                    | DstFile FilePath
                     deriving (Eq, Show)
 
-newtype Options = Options MintOptions
+newtype Options = Options BurnOptions
 
-parseMint :: Parser MintOptions
-parseMint = MintOptions
+parseBurn :: Parser BurnOptions
+parseBurn = BurnOptions
   <$> strOption
   ( long "owner"
   <> short 'o'
@@ -53,7 +73,7 @@ parseMint = MintOptions
   <> help "tokens amount" )
 
 parseOptions :: Parser Options
-parseOptions = Options <$> parseMint
+parseOptions = Options <$> parseBurn
 
 main :: IO ()
 main = burnToken =<< execParser opts
@@ -65,7 +85,7 @@ main = burnToken =<< execParser opts
 
 -- burn token
 burnToken :: Options -> IO ()
-burnToken (Options mintOptions) = do
+burnToken (Options burnOptions) = do
   loadFile defaultConfig
   addressesPath <- getEnv "ADDRESSES_PATH"
   policiesFolder <- getEnv "POLICIES_FOLDER"
@@ -75,39 +95,39 @@ burnToken (Options mintOptions) = do
   let networkMagic = read sNetworkMagic :: Int
   networkEra <- lookupEnv "NETWORK_ERA"
   -- mint owner, policy and token
-  let ownerName = capitalized $ owner mintOptions
-      policyName = policy mintOptions
-      tokenName = token mintOptions
-      tokenAmount = amount mintOptions
-      policiesPath = getPoliciesPath addressesPath ownerName policiesFolder
+  let owner = Owner (capitalized $ ownerName burnOptions)
+      policyName = policy burnOptions
+      tokenName = token burnOptions
+      tokenAmount = amount burnOptions
+      policiesPath = getPoliciesPath addressesPath owner policiesFolder
 
   -- source address and signing key
-  mSrcAddress <- getSrcAddress ownerName addressesPath
-  let sKeyFile = getSKeyFile addressesPath Payment ownerName
+  mSrcAddress <- getSrcAddress owner addressesPath
+  let sKeyFile = getSKeyFile addressesPath Payment owner
 
   Control.Monad.when (isJust mSrcAddress) $ do
     let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
-    doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath (Just tokenName) tokenAmount
+    doBurn bNetwork owner mSrcAddress sKeyFile policyName policiesPath (Just tokenName) tokenAmount
   putStrLn ""
 
 -- get srcAddress from owner
 getSrcAddress :: Owner -> FilePath -> IO (Maybe Address)
-getSrcAddress ownerName addressesPath = do
-  maddress <- getAddress $ getAddressFile addressesPath Payment ownerName
+getSrcAddress owner addressesPath = do
+  maddress <- getAddress $ getAddressFile addressesPath Payment owner
   case maddress of
     Just address -> do
       let srcAddress = fromJust maddress
-      putStrLn $ "Source address : " ++ srcAddress
-    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ ownerName
+      putStrLn $ "Source address : " ++ show srcAddress
+    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ show owner
   return maddress
 
 -- burn amount of token from owner for destination address on given network
 doBurn :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> String -> String -> Maybe String -> Int -> IO ()
-doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath mTokenName tokenAmount = do
+doBurn bNetwork owner mSrcAddress sKeyFile policyName policiesPath mTokenName tokenAmount = do
   let protocolParametersFile = "/tmp/protocolParams.json"
       -- 1. get policy for our token
       polName = buildPolicyName policyName mTokenName
-  
+
   policy <- getPolicy policiesPath polName
   when (isJust policy && tokenAmount /= 0 && isJust mSrcAddress) $ do
     -- 2. Extract protocol parameters (needed for fee calculations)
@@ -121,7 +141,7 @@ doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath mTokenNam
 
     -- 5. Calculate fees for the transaction
     let polId = policyId (fromJust policy)
-    let tokenList = [Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount, 
+    let tokenList = [Token { tokenName = fromJust mTokenName, tokenAmount = tokenAmount,
                       tokenId = getTokenId polId (fromJust mTokenName),
                       tokenPolicyName = policyName} | isJust mTokenName ]
 
@@ -133,7 +153,7 @@ doBurn bNetwork ownerName mSrcAddress sKeyFile policyName policiesPath mTokenNam
       let okFeeFile = getTransactionFile mTokenName OkFee
       rc <- buildBurnTransaction bNetwork (fromJust mSrcAddress) tokenList utxo balances (fromJust minFee) okFeeFile
       unless rc $ print "Failed to build transaction"
-      
+
       -- 7. Sign the transaction
       let signFile = getTransactionFile mTokenName Sign
       signBurnTransaction bNetwork sKeyFile policies okFeeFile signFile

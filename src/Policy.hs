@@ -1,26 +1,31 @@
 -- policy helpers ---------------------------------------------------------
+{-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
-module Policy ( buildPolicyName, createPolicy, getPolicy, getPolicies, getPoliciesPath, getPolicyId, getPolicyIdFromTokenId, 
+module Policy ( buildPolicyName, createPolicy, getPolicy, getPolicies, getPoliciesPath, getPolicyId, getPolicyIdFromTokenId,
     Policy(..), tokensPathName, signingKeyExt, verificationKeyExt ) where
 
-import System.Directory ( createDirectoryIfMissing, doesFileExist)
-import System.FilePath ( takeDirectory )
-import System.IO ( hGetContents )
-import System.Process ( createProcess, proc, std_out, StdStream(CreatePipe), waitForProcess )
-import Data.Aeson (FromJSON, ToJSON, toEncoding, genericToEncoding, decode, encode)
-import Data.Aeson.TH (deriveJSON, defaultOptions, Options(fieldLabelModifier))
-import GHC.Generics
+import           Data.Aeson                 (FromJSON, ToJSON, decode, encode,
+                                             genericToEncoding, toEncoding)
+import           Data.Aeson.TH              (Options (fieldLabelModifier),
+                                             defaultOptions, deriveJSON)
 import qualified Data.ByteString.Lazy.Char8 as B8
-import Data.List (nub)
-import Data.List.Split ( splitOn )
-import Data.Maybe ( isJust, fromJust )
-import Wallet ( getAddressPath )
+import           Data.List                  (nub)
+import           Data.List.Split            (splitOn)
+import           Data.Maybe                 (fromJust, isJust)
+import           GHC.Generics
+import           System.Directory           (createDirectoryIfMissing,
+                                             doesFileExist)
+import           System.FilePath            (takeDirectory)
+import           System.IO                  (hGetContents)
+import           System.Process             (StdStream (CreatePipe),
+                                             createProcess, proc, std_out,
+                                             waitForProcess)
+import           Wallet                     (getAddressPath, Owner(..))
 
 data PolicyScript = PolicyScript
-  { 
+  {
     keyHash :: String
-  , keyType    :: String
+  , keyType :: String
   }
   deriving (Show, Generic)
 
@@ -28,7 +33,7 @@ $(deriveJSON defaultOptions{fieldLabelModifier = \f -> if f == "keyType" then "t
 
 -- Cardano Policy
 data Policy = Policy
-  { 
+  {
     policyScript :: FilePath
   , policyVKey   :: FilePath
   , policySKey   :: FilePath
@@ -36,7 +41,7 @@ data Policy = Policy
   , policyId     :: String
   , policyName   :: String
   }
-  deriving (Show, Eq) 
+  deriving (Show, Eq)
 
 -- some constants
 addressExt = ".addr"
@@ -48,9 +53,9 @@ verificationKeyExt = ".vkey"
 -- build policy name
 -- if no policy name specified, search policy with token name
 buildPolicyName :: String -> Maybe String -> String
-buildPolicyName "" Nothing = "noName"
+buildPolicyName "" Nothing          = "noName"
 buildPolicyName "" (Just tokenName) = tokenName
-buildPolicyName policyName _ = policyName
+buildPolicyName policyName _        = policyName
 
 -- build Policy full file names
 buildPolicy :: String -> String -> Policy
@@ -89,12 +94,12 @@ createPolicy policyName policyPath = do
   -- retrieve policy script
   let runParams3 =["transaction", "policyid", "--script-file", policyScript policy]
   (_, Just hOut, _, _) <- createProcess (proc "cardano-cli" runParams3){ std_out = CreatePipe }
-  pId <- hGetContents hOut 
+  pId <- hGetContents hOut
   return (Just (policy { policyId = filter (/= '\n') pId, policyName = policyName}::Policy ))
 
 
 -- | get Policies Folder
-getPoliciesPath:: FilePath -> String -> FilePath -> FilePath
+getPoliciesPath:: FilePath -> Owner -> FilePath -> FilePath
 getPoliciesPath addressPath ownerName policiesFolder = getAddressPath addressPath ownerName ++ policiesFolder
 
 -- get Policy Id
@@ -110,7 +115,7 @@ getPolicy :: FilePath -> String -> IO (Maybe Policy)
 getPolicy policiesPath policyName = do
   let policy = buildPolicy policyName policiesPath
   bool <- doesFileExist (policyScript policy)
-  if bool then do 
+  if bool then do
     -- get policy id
     (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" ["transaction", "policyid", "--script-file", policyScript policy]){ std_out = CreatePipe }
     r <- waitForProcess ph

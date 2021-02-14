@@ -1,14 +1,15 @@
-import Options.Applicative
-import Data.Semigroup ((<>))
-import TokenUtils ( getTokenId, readTokensFromFile, Token(..), writeTokensToFile )
+import           Data.Semigroup      ((<>))
+import           Options.Applicative
+import           TokenUtils          (Token (..), getTokenId,
+                                      readTokensFromFile, writeTokensToFile)
 
 data TokenOptions = TokenOptions
   { policyName :: String
-  , policyId :: String
-  , amount :: Int
-  , prefix :: String
-  , csvFile :: FilePath
-  , jsonFile :: FilePath
+  , policyId   :: String
+  , amount     :: Int
+  , prefix     :: String
+  , csvFile    :: FilePath
+  , jsonFile   :: FilePath
   } deriving (Eq, Show)
 
 newtype Options = Options TokenOptions
@@ -29,7 +30,7 @@ parseToken = TokenOptions
   ( long "amount"
   <> short 'a'
   <> metavar "AMOUNT"
-  <> help "token amount" 
+  <> help "token amount"
   <> value 1)
   <*> strOption
   ( long "prefix"
@@ -61,20 +62,6 @@ main = genTokens =<< execParser opts
 -- generate tokens file
 genTokens :: Options -> IO ()
 genTokens (Options tokenOptions) = do
-{-
-  let policyName = "CryptoFruit"
-  let policyId = "6386a3dfbfb7e6a04834d578fff70a3b48e3313b94bc394c87464b9b"
-  let amount = 1
-  let prefix = "Cry"
-  let outFile = "fruits.json"
-  genTokens policyName policyId amount prefix outFile
-
-genTokens :: String -> String -> Int -> String -> FilePath -> IO ()
-genTokens policyName policyId amount prefix outFile = do
-  let templateDir = "data/"
-      tokenListFile = templateDir ++ "fruits.csv"
-      tokenJsonFile = templateDir ++ outFile
--} 
 
   tokenNames <- readFile (csvFile tokenOptions)
   print (words tokenNames)

@@ -1,21 +1,25 @@
-import System.Environment
-import Options.Applicative
-import Data.Semigroup ((<>))
-import Data.Maybe ( isJust, fromJust )
-import Baseutils ( capitalized )
-import Control.Monad (void, when, filterM, mapM_ )
-import Configuration.Dotenv (loadFile, defaultConfig )
-import System.Directory ( doesDirectoryExist, getDirectoryContents, doesFileExist )
-import Policy ( getPolicy, getPoliciesPath, getPolicyId, Policy(..) )
+import           Baseutils            (capitalized)
+import           Configuration.Dotenv (defaultConfig, loadFile)
+import           Control.Monad        (filterM, mapM_, void, when)
+import           Data.Maybe           (fromJust, isJust)
+import           Data.Semigroup       ((<>))
+import           Options.Applicative
+import           Policy               (Policy (..), getPoliciesPath, getPolicy,
+                                       getPolicyId)
+import           System.Directory     (doesDirectoryExist, doesFileExist,
+                                       getDirectoryContents)
+import           System.Environment
+import Wallet
+    ( Owner (..) )
 
-type Owner = String
-type Pol = String
-data Options = Options Owner Pol
+type OwnerName = String
+type PolName = String
+data Options = Options OwnerName PolName
 
-parsePol :: Parser Pol
+parsePol :: Parser PolName
 parsePol = argument str (metavar "POLICY" <> value "")
 
-parseOwner :: Parser Owner
+parseOwner :: Parser OwnerName
 parseOwner = strOption
           ( long "owner"
          <> short 'o'
@@ -34,19 +38,19 @@ main = getPolicyInfo =<< execParser opts
      <> header "policy-info - a simple tool to display minting policy info" )
 
 getPolicyInfo :: Options -> IO ()
-getPolicyInfo (Options owner policyName) = do
+getPolicyInfo (Options ownerName policyName) = do
   loadFile defaultConfig
   addressPath <- getEnv "ADDRESSES_PATH"
   policiesFolder <- getEnv "POLICIES_FOLDER"
-  let ownerName = capitalized owner
-  let policiesPath = getPoliciesPath addressPath ownerName policiesFolder
+  let owner = Owner (capitalized ownerName)
+  let policiesPath = getPoliciesPath addressPath owner policiesFolder
 
-  if policyName /= "" then 
-    printPolicyInfo ownerName policiesPath policyName
+  if policyName /= "" then
+    printPolicyInfo owner policiesPath policyName
   else do
-    lPolicies <- listDirs policiesPath 
+    lPolicies <- listDirs policiesPath
     let policies = filter (`notElem` [".", ".."]) lPolicies
-    mapM_ (printPolicyInfo ownerName policiesPath) policies
+    mapM_ (printPolicyInfo owner policiesPath) policies
 
 -- list sub folders
 listDirs :: FilePath -> IO [FilePath]
@@ -57,19 +61,19 @@ listFiles :: FilePath -> IO [FilePath]
 listFiles path = getDirectoryContents path >>= filterM (doesFileExist . (++) path)
 
 -- print policy infos
-printPolicyInfo :: String -> FilePath -> String -> IO ()
-printPolicyInfo ownerName policiesPath policyName  = do
+printPolicyInfo :: Owner -> FilePath -> String -> IO ()
+printPolicyInfo owner policiesPath policyName  = do
   mPolicy <- getPolicy policiesPath policyName
   if isJust mPolicy then do
     let policyPath = policiesPath  ++ policyName ++ "/"
     putStrLn "========================================================================================================="
-    putStrLn $ "Policy " ++ policyName ++ " owned by " ++ ownerName
+    putStrLn $ "Policy " ++ policyName ++ " owned by " ++ show owner
     putStrLn "---------------------------------------------------------------------------------------------------------"
     putStrLn $ "Policy path : " ++ policyPath
-    putStrLn $ "Policy id : " ++ getPolicyId(fromJust mPolicy)   
+    putStrLn $ "Policy id : " ++ getPolicyId(fromJust mPolicy)
     printTokensInfo (fromJust mPolicy)
   else
-    putStrLn $ "No policy " ++ capitalized policyName ++ " found for " ++ ownerName
+    putStrLn $ "No policy " ++ capitalized policyName ++ " found for " ++ show owner
 
 --print tokens infos for policy
 printTokensInfo :: Policy -> IO ()
