@@ -1,5 +1,5 @@
 import Address
-    ( Address (..), AddressType (Payment, Stake), getAddress, getAddressFile )
+    ( Address (..), AddressType (Payment, Stake), getAddressFromFile, getAddressFile )
 import Baseutils
     ( capitalized )
 import Configuration.Dotenv
@@ -30,6 +30,7 @@ import Wallet
     ( Owner (..) )
 
 -- parsing options
+newtype OwnerName = OwnerName { getOwnerName :: String} deriving (Eq, Show)
 data InfoAddress = InfoAddress {
   payment :: Bool
 , stake :: Bool
@@ -38,12 +39,10 @@ data InfoAddress = InfoAddress {
 , compact :: Bool
 } deriving Show
 
-type OwnerName = String
-
 data Options = Options OwnerName InfoAddress
 
 parseOwner :: Parser OwnerName
-parseOwner = argument str (metavar "OWNER")
+parseOwner = OwnerName <$> argument str (metavar "OWNER")
 
 parseInfoAddress :: Parser InfoAddress
 parseInfoAddress = InfoAddress
@@ -95,7 +94,7 @@ getInfoAddress (Options ownerName infoAddress) = do
   policiesFolder <- getEnv "POLICIES_FOLDER"
   networkSocket <- getEnv "CARDANO_NODE_SOCKET_PATH"
 
-  let owner = Owner (capitalized ownerName)
+  let owner = Owner (capitalized $ getOwnerName ownerName)
 
   network <- getEnv "NETWORK"
   sNetworkMagic <- getEnv "NETWORK_MAGIC"
@@ -105,17 +104,17 @@ getInfoAddress (Options ownerName infoAddress) = do
   let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
 
   let addressType = if stake infoAddress then Stake else Payment
-  maddress <- getAddress $ getAddressFile addressesPath addressType owner
+  maddress <- getAddressFromFile $ getAddressFile addressesPath addressType owner
 
   case maddress of
     Just address -> do
       let compactMode = compact infoAddress
       let address = fromJust maddress
-      putStrLn $ "Address : " ++ show address
+      putStrLn $ "Address : " ++ getAddress address
 
       Control.Monad.when (balance infoAddress) $ do
         printBalance bNetwork address
 
       Control.Monad.when (utxo infoAddress) $ do
         printUtxo compactMode bNetwork address
-    _ -> putStrLn $ "No " ++ show addressType ++ " address for " ++ show owner
+    _ -> putStrLn $ "No " ++ show addressType ++ " address for " ++ getOwner owner

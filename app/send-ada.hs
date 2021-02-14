@@ -1,5 +1,5 @@
 import           Address              (Address (..), AddressType (Payment),
-                                       getAddress, getAddressFile, getSKeyFile)
+                                       getAddressFromFile, getAddressFile, getSKeyFile)
 import           Baseutils            (capitalized)
 import           Configuration.Dotenv (defaultConfig, loadFile)
 import           Control.Monad        (unless, void, when)
@@ -105,34 +105,34 @@ sendToken (Options sendOptions dstTypeAddress) = do
 
 -- get srcAddress from owner
 getSrcAddress :: Owner -> FilePath -> IO (Maybe Address)
-getSrcAddress ownerName addressesPath = do
-  maddress <- getAddress $ getAddressFile addressesPath Payment ownerName
+getSrcAddress owner addressesPath = do
+  maddress <- getAddressFromFile $ getAddressFile addressesPath Payment owner
   case maddress of
     Just address -> do
       let srcAddress = fromJust maddress
-      putStrLn $ "Source address : " ++ show srcAddress
-    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ show ownerName
+      putStrLn $ "Source address : " ++ getAddress srcAddress
+    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ getOwner owner
   return maddress
 
 -- get dstAddress depending on type address provided
 getDstAddress :: DstTypeAddress -> FilePath -> IO (Maybe Address)
 getDstAddress (DstName dstName) addressesPath = do
-  maddress <- getAddress $ getAddressFile addressesPath Payment (Owner $ capitalized dstName)
+  maddress <- getAddressFromFile $ getAddressFile addressesPath Payment (Owner $ capitalized dstName)
   case maddress of
     Just address -> do
       let dstAddress = fromJust maddress
-      putStrLn $ "Destination address : " ++ show dstAddress
+      putStrLn $ "Destination address : " ++ getAddress dstAddress
     _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ dstName
   return maddress
 getDstAddress (DstAddress dstAddress) addressesPath = do
   putStrLn $ "Destination address : " ++ show dstAddress
   return (Just $ Address dstAddress)
 getDstAddress (DstFile dstFile) addressesPath = do
-  maddress <- getAddress dstFile
+  maddress <- getAddressFromFile dstFile
   case maddress of
     Just address -> do
       let dstAddress = fromJust maddress
-      putStrLn $ "Destination address : " ++ show dstAddress
+      putStrLn $ "Destination address : " ++ getAddress dstAddress
     _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ dstFile
   return maddress
 
@@ -141,7 +141,7 @@ getDstAddress (DstFile dstFile) addressesPath = do
 doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> Maybe String -> IO Bool
 doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenMetadata
   | isNothing mSrcAddress = do
-      putStrLn $  "No address found for " ++ show ownerName
+      putStrLn $  "No address found for " ++ getOwner ownerName
       return False
   | otherwise = do
     let protocolParametersFile = "/tmp/protocolParams.json"

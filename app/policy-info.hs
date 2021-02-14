@@ -1,6 +1,6 @@
 import           Baseutils            (capitalized)
 import           Configuration.Dotenv (defaultConfig, loadFile)
-import           Control.Monad        (filterM, mapM_, void, when)
+import           Control.Monad        (filterM, mapM_, void, when, unless)
 import           Data.Maybe           (fromJust, isJust)
 import           Data.Semigroup       ((<>))
 import           Options.Applicative
@@ -12,22 +12,25 @@ import           System.Environment
 import Wallet
     ( Owner (..) )
 
-type OwnerName = String
-type PolName = String
-data Options = Options OwnerName PolName
+-- parsing options
+data InfoPolicy = InfoPolicy {
+  ownerName :: String
+, compact :: Bool
+} deriving Show
+
+newtype PolName = PolName { getPol :: String} deriving (Eq, Show)
+data Options = Options InfoPolicy PolName
 
 parsePol :: Parser PolName
-parsePol = argument str (metavar "POLICY" <> value "")
+parsePol = PolName <$> argument str (metavar "POLICY" <> value "")
 
-parseOwner :: Parser OwnerName
-parseOwner = strOption
-          ( long "owner"
-         <> short 'o'
-         <> metavar "OWNER"
-         <> help "address owner name" )
+parseInfoPolicy :: Parser InfoPolicy
+parseInfoPolicy = InfoPolicy
+          <$> strOption ( long "owner" <> short 'o' <> metavar "OWNER" <> help "address owner name" )
+          <*> switch ( long "compact" <> short 'c' <> help "displays in compact mode" )
 
 parseOptions :: Parser Options
-parseOptions = Options <$> parseOwner <*> parsePol
+parseOptions = Options <$> parseInfoPolicy <*> parsePol
 
 main :: IO ()
 main = getPolicyInfo =<< execParser opts
@@ -38,19 +41,21 @@ main = getPolicyInfo =<< execParser opts
      <> header "policy-info - a simple tool to display minting policy info" )
 
 getPolicyInfo :: Options -> IO ()
-getPolicyInfo (Options ownerName policyName) = do
+getPolicyInfo (Options infoPolicy polName) = do
   loadFile defaultConfig
   addressPath <- getEnv "ADDRESSES_PATH"
   policiesFolder <- getEnv "POLICIES_FOLDER"
-  let owner = Owner (capitalized ownerName)
+  let owner = Owner (capitalized $ ownerName infoPolicy)
+  let compactMode = compact infoPolicy
+  let policyName = getPol polName
   let policiesPath = getPoliciesPath addressPath owner policiesFolder
 
   if policyName /= "" then
-    printPolicyInfo owner policiesPath policyName
+    printPolicyInfo compactMode owner policiesPath policyName
   else do
     lPolicies <- listDirs policiesPath
     let policies = filter (`notElem` [".", ".."]) lPolicies
-    mapM_ (printPolicyInfo owner policiesPath) policies
+    mapM_ (printPolicyInfo compactMode owner policiesPath) policies
 
 -- list sub folders
 listDirs :: FilePath -> IO [FilePath]
@@ -61,19 +66,20 @@ listFiles :: FilePath -> IO [FilePath]
 listFiles path = getDirectoryContents path >>= filterM (doesFileExist . (++) path)
 
 -- print policy infos
-printPolicyInfo :: Owner -> FilePath -> String -> IO ()
-printPolicyInfo owner policiesPath policyName  = do
+printPolicyInfo :: Bool -> Owner -> FilePath -> String -> IO ()
+printPolicyInfo compactMode owner policiesPath policyName  = do
   mPolicy <- getPolicy policiesPath policyName
   if isJust mPolicy then do
     let policyPath = policiesPath  ++ policyName ++ "/"
     putStrLn "========================================================================================================="
-    putStrLn $ "Policy " ++ policyName ++ " owned by " ++ show owner
+    putStrLn $ "Policy " ++ policyName ++ " owned by " ++ getOwner owner
     putStrLn "---------------------------------------------------------------------------------------------------------"
     putStrLn $ "Policy path : " ++ policyPath
     putStrLn $ "Policy id : " ++ getPolicyId(fromJust mPolicy)
-    printTokensInfo (fromJust mPolicy)
+    unless compactMode $ do
+        printTokensInfo (fromJust mPolicy)
   else
-    putStrLn $ "No policy " ++ capitalized policyName ++ " found for " ++ show owner
+    putStrLn $ "No policy " ++ capitalized policyName ++ " found for " ++ getOwner owner
 
 --print tokens infos for policy
 printTokensInfo :: Policy -> IO ()

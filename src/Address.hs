@@ -1,5 +1,5 @@
 -- address helpers ---------------------------------------------------------------------
-module Address ( createKeyPair, Address (..), AddressType(Payment, Stake), getAddress, getAddressFile, getSKeyFile, getVKeyFile, ) where
+module Address ( createKeyPair, Address (..), AddressType(Payment, Stake), getAddressFromFile, getAddressFile, getSKeyFile, getVKeyFile, ) where
 
 import           System.Directory (createDirectoryIfMissing, doesFileExist)
 import           System.FilePath  (takeDirectory)
@@ -11,17 +11,18 @@ import           Policy           (signingKeyExt, verificationKeyExt)
 import           Wallet           (getAddressPath, Owner(..))
 
 -- data AdressOrKey = address | signing_key | verification_key deriving (Read, Show, Eq)
-newtype Address = Address String deriving (Eq, Show)
+newtype Address = Address { getAddress :: String } deriving (Eq)
+
 data AddressType = Payment | Stake deriving (Read, Show, Eq)
 
 -- create key pair based on address_name
 createKeyPair :: AddressType -> FilePath -> Owner -> IO Bool
-createKeyPair addressType addressesPath ownerName = do
-  let vKeyFile = getVKeyFile addressesPath addressType ownerName
-  let sKeyFile = getSKeyFile addressesPath addressType ownerName
+createKeyPair addressType addressesPath owner = do
+  let vKeyFile = getVKeyFile addressesPath addressType owner
+  let sKeyFile = getSKeyFile addressesPath addressType owner
   bool <- doesFileExist vKeyFile
   if bool then do
-    putStrLn $ "key pair already exists for " ++ show ownerName
+    putStrLn $ "key pair already exists for " ++ getOwner owner
     return False
   else do
     createDirectoryIfMissing True (takeDirectory vKeyFile)
@@ -31,9 +32,9 @@ createKeyPair addressType addressesPath ownerName = do
     r <- waitForProcess ph
     return True
 
--- TODO GetAddress
-getAddress :: FilePath -> IO (Maybe Address)
-getAddress addressFileName = do
+-- get address from file
+getAddressFromFile :: FilePath -> IO (Maybe Address)
+getAddressFromFile addressFileName = do
   bool <- doesFileExist addressFileName
   if not bool then do
     putStrLn $ "file not found : " ++ addressFileName
@@ -44,12 +45,12 @@ getAddress addressFileName = do
 
 -- give file name for name type address or key
 getAddressKeyFile :: FilePath -> AddressType -> String -> Owner -> FilePath
-getAddressKeyFile addressesPath addressType addressKey name = do
+getAddressKeyFile addressesPath addressType addressKey owner = do
   let sAddressType = if addressType == Payment then "payment" else "stake"
   let extMap = [ ("address", ".addr"), ("signing_key", signingKeyExt), ("verification_key", verificationKeyExt)]
   let extM = lookup addressKey extMap
   case extM of
-    Just ext -> getAddressPath addressesPath name ++ sAddressType ++ show name ++ ext
+    Just ext -> getAddressPath addressesPath owner ++ sAddressType ++ getOwner owner ++ ext
     _ -> ""
 
 -- give file name for name type address

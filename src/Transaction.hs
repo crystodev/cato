@@ -18,9 +18,9 @@ import           System.Process             (StdStream (CreatePipe),
                                              createProcess, env, proc, std_out,
                                              waitForProcess)
 
-import           Address                    (Address,
+import           Address                    (Address (..),
                                              AddressType (Payment, Stake),
-                                             getAddress, getAddressFile,
+                                             getAddressFromFile, getAddressFile,
                                              getVKeyFile)
 import           Network                    (BlockchainNetwork (..),
                                              Tip (Tip, slotNo), getNetworkEra,
@@ -137,9 +137,10 @@ buildTxIn :: [String] -> [String]
 buildTxIn utxos = concat ["--tx-in":[u] | u <- utxos]
 
 buildTxOut :: Address -> Address -> String -> String -> [String]
-buildTxOut srcAddress dstAddress txOutSrc txOutDst
-  | srcAddress == dstAddress = ["--tx-out", show srcAddress ++ txOutSrc ++ txOutDst]
-  | otherwise = ["--tx-out", show srcAddress ++ txOutSrc, "--tx-out", show dstAddress ++ txOutDst]
+buildTxOut srcAddress dstAddress txOutSrc txOutDst =
+    ["--tx-out", getAddress srcAddress ++ txOutSrc, "--tx-out", getAddress dstAddress ++ txOutDst]
+--  | srcAddress == dstAddress = ["--tx-out", getAddress srcAddress ++ txOutSrc ++ txOutDst]
+--  | otherwise = ["--tx-out", getAddress srcAddress ++ txOutSrc, "--tx-out", getAddress dstAddress ++ txOutDst]
 
 buildTransferTransaction :: TransactionType -> BlockchainNetwork -> Address -> Address -> Int -> [Token] -> Maybe String -> Utxo -> Int -> FilePath -> IO Bool
 buildTransferTransaction transactionType bNetwork srcAddress dstAddress adaAmount tokenList mTokenMetadata utxo fee outFile = do
@@ -207,7 +208,7 @@ buildBurnTransaction bNetwork srcAddress tokenList utxo balances fee outFile = d
     let adaId = "lovelace"
     (rc, balances) <- checkSendTransactionBalance (tokens utxo) fee 0 tokenList Burn
     if rc then do
-      let txOutSrc = foldl' joinKV (show srcAddress) (reverse balances)
+      let txOutSrc = foldl' joinKV (getAddress srcAddress) (reverse balances)
       ttl <- calculateTTL bNetwork
       if isJust ttl then do
         let runParams = ["transaction", "build-raw"] ++ getNetworkEra bNetwork ++ ["--fee", show fee] ++ buildTxIn (utxos utxo) ++
@@ -248,7 +249,7 @@ calculateFees transactionType bNetwork srcAddress dstAddress adaAmount policies 
     putStrLn "Failed to build transaction"
     return Nothing
   else do
-    let txOutCount = if srcAddress == dstAddress then 1 else 2
+    let txOutCount = 2
     let witnessCount = length policies + 1
     let runParams = ["transaction", "calculate-min-fee", "--tx-body-file", draftFile, "--tx-in-count", show(nbUtxos utxo),
           "--tx-out-count", show txOutCount] ++ ["--witness-count", show witnessCount, "--byron-witness-count", "0", "--protocol-params-file", protParamsFile]
@@ -288,18 +289,18 @@ calculateTTL bNetwork = do
 
 -- create address for owner
 createAddress :: BlockchainNetwork -> AddressType -> FilePath -> Owner -> IO (Maybe Address)
-createAddress bNetwork addressType addressesPath ownerName = do
-  let vkFile = getVKeyFile addressesPath addressType ownerName
+createAddress bNetwork addressType addressesPath owner = do
+  let vkFile = getVKeyFile addressesPath addressType owner
   boolVK <- doesFileExist vkFile
   if not boolVK then do
-    putStrLn $ "verification key missing for " ++ show ownerName
+    putStrLn $ "verification key missing for " ++ getOwner owner
     return Nothing
   else do
-    let addrFile = getAddressFile addressesPath addressType ownerName
+    let addrFile = getAddressFile addressesPath addressType owner
     boolAddress <- doesFileExist addrFile
     if boolAddress then do
-      putStrLn $ "address already exists for " ++ show ownerName
-      getAddress addrFile
+      putStrLn $ "address already exists for " ++ getOwner owner
+      getAddressFromFile addrFile
     else do
       let netName = network bNetwork
       let netMagic = networkMagic bNetwork
@@ -308,7 +309,7 @@ createAddress bNetwork addressType addressesPath ownerName = do
       let runParams = [sAddressType, "build", netName, show netMagic, "--" ++ sAddressPrefix ++ "-verification-key-file", vkFile, "--out-file", addrFile]
       (_, Just rc, _, ph) <- createProcess (proc "cardano-cli" runParams){ std_out = CreatePipe }
       r <- waitForProcess ph
-      getAddress addrFile
+      getAddressFromFile addrFile
 
 -- get utxo from wallet
 getUtxoFromWallet :: BlockchainNetwork -> Address -> IO Utxo
@@ -317,7 +318,7 @@ getUtxoFromWallet bNetwork address = do
   let netMagic = getNetworkMagic bNetwork
   let netEra = getNetworkEra bNetwork
   let envParam = Just [("CARDANO_NODE_SOCKET_PATH", networkEnv bNetwork)]
-  let runParams = ["query", "utxo", netName] ++ netMagic ++ netEra ++ ["--address", show address]
+  let runParams = ["query", "utxo", netName] ++ netMagic ++ netEra ++ ["--address", getAddress address]
   (_, Just hOut, _, ph) <- createProcess (proc "cardano-cli" runParams ) { env = envParam } {std_out = CreatePipe }
   r <- waitForProcess ph
   raw <- hGetContents hOut

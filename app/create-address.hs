@@ -20,6 +20,7 @@ import Transaction
 import Wallet
     ( Owner (..) )
 
+newtype OwnerName = OwnerName { getOwnerName :: String} deriving (Eq, Show)
 data Address = Address {
   payment    :: Bool
 , stake      :: Bool
@@ -27,12 +28,10 @@ data Address = Address {
 , stakeKey   :: Bool
 } deriving Show
 
-type OwnerName = String
-
 data Options = Options OwnerName Address
 
 parseOwner :: Parser OwnerName
-parseOwner = argument str (metavar "OWNER")
+parseOwner = OwnerName <$> argument str (metavar "OWNER")
 
 parseAddress :: Parser Address
 parseAddress = Address
@@ -53,11 +52,11 @@ main = doCreateAddress =<< execParser opts
      <> header "create-address - a simple address creator" )
 
 doCreateAddress :: Options -> IO ()
-doCreateAddress (Options owner address) = do
+doCreateAddress (Options ownerName address) = do
   loadFile defaultConfig
   addressesPath <- getEnv "ADDRESSES_PATH"
   policiesFolder <- getEnv "POLICIES_FOLDER"
-  let cOwner = Owner (capitalized $ show owner)
+  let owner = Owner (capitalized $ getOwnerName ownerName)
 
   network <- getEnv "NETWORK"
   sNetworkMagic <- getEnv "NETWORK_MAGIC"
@@ -65,18 +64,18 @@ doCreateAddress (Options owner address) = do
   let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = Nothing, networkEnv = "" }
 
   Control.Monad.when (paymentKey address) $ do
-    rc <- createKeyPair Payment addressesPath cOwner
-    putStrLn $ "Creating payment key pair for " ++ show cOwner
+    rc <- createKeyPair Payment addressesPath owner
+    putStrLn $ "Creating payment key pair for " ++ getOwner owner
 
   Control.Monad.when (stakeKey address) $ do
-    rc <- createKeyPair Stake addressesPath cOwner
-    putStrLn $ "Creating stake key pair for " ++ show cOwner
+    rc <- createKeyPair Stake addressesPath owner
+    putStrLn $ "Creating stake key pair for " ++ getOwner owner
 
   Control.Monad.when (payment address) $ do
-    ownerAddress <- createAddress bNetwork Payment addressesPath cOwner
-    putStrLn $ "Creating payment address for " ++ show cOwner ++ "\n"
+    ownerAddress <- createAddress bNetwork Payment addressesPath owner
+    putStrLn $ "Creating payment address for " ++ getOwner owner ++ "\n"
 
   Control.Monad.when (stake address) $ do
-    ownerAddress <- createAddress bNetwork Stake addressesPath cOwner
-    putStrLn $ "Creating stake address for " ++ show cOwner ++ "\n"
+    ownerAddress <- createAddress bNetwork Stake addressesPath owner
+    putStrLn $ "Creating stake address for " ++ getOwner owner ++ "\n"
 

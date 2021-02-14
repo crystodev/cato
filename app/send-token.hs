@@ -1,5 +1,5 @@
 import           Address              (Address (..), AddressType (Payment),
-                                       getAddress, getAddressFile, getSKeyFile)
+                                       getAddressFromFile, getAddressFile, getSKeyFile)
 import           Baseutils            (capitalized)
 import           Configuration.Dotenv (defaultConfig, loadFile)
 import           Control.Monad        (unless, void, when)
@@ -24,7 +24,7 @@ import Wallet
 
 -- parsing options
 data SendOptions = SendOptions
-  { owner    :: String
+  { ownerName    :: String
   , policy   :: String
   , metadata :: Maybe String
   , token    :: String
@@ -108,7 +108,7 @@ sendToken (Options sendOptions dstTypeAddress) = do
   let networkMagic = read sNetworkMagic :: Int
   networkEra <- lookupEnv "NETWORK_ERA"
   -- mint owner, policy and token
-  let ownerName = Owner (capitalized $ owner sendOptions)
+  let owner = Owner (capitalized $ ownerName sendOptions)
       adaAmount = ada sendOptions
       --policyName = policy sendOptions
       tokenName = token sendOptions
@@ -116,57 +116,57 @@ sendToken (Options sendOptions dstTypeAddress) = do
       mTokenMetadata = metadata sendOptions
 
   -- source address and signing key
-  mSrcAddress <- getSrcAddress ownerName addressesPath
-  let sKeyFile = getSKeyFile addressesPath Payment ownerName
+  mSrcAddress <- getSrcAddress owner addressesPath
+  let sKeyFile = getSKeyFile addressesPath Payment owner
 
   -- destination address
   mDstAddress <- getDstAddress dstTypeAddress addressesPath
 
   Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
     let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
-    rc <- doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount (Just tokenName) tokenAmount mTokenMetadata
+    rc <- doSend bNetwork owner mSrcAddress sKeyFile mDstAddress adaAmount (Just tokenName) tokenAmount mTokenMetadata
     unless rc $ putStrLn "Nothing sent"
 
 
 -- get srcAddress from owner
 getSrcAddress :: Owner -> FilePath -> IO (Maybe Address)
-getSrcAddress ownerName addressesPath = do
-  maddress <- getAddress $ getAddressFile addressesPath Payment ownerName
+getSrcAddress owner addressesPath = do
+  maddress <- getAddressFromFile $ getAddressFile addressesPath Payment owner
   case maddress of
     Just address -> do
       let srcAddress = fromJust maddress
-      putStrLn $ "Source address : " ++ show srcAddress
-    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ show ownerName
+      putStrLn $ "Source address : " ++ getAddress srcAddress
+    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ getOwner owner
   return maddress
 
 -- get dstAddress depending on type address provided
 getDstAddress :: DstTypeAddress -> FilePath -> IO (Maybe Address)
 getDstAddress (DstName dstName) addressesPath = do
-  maddress <- getAddress $ getAddressFile addressesPath Payment (Owner $ capitalized dstName)
+  maddress <- getAddressFromFile $ getAddressFile addressesPath Payment (Owner $ capitalized dstName)
   case maddress of
     Just address -> do
       let dstAddress = fromJust maddress
-      putStrLn $ "Destination address : " ++ show dstAddress
+      putStrLn $ "Destination address : " ++ getAddress dstAddress
     _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ dstName
   return maddress
 getDstAddress (DstAddress dstAddress) addressesPath = do
   putStrLn $ "Destination address : " ++ show dstAddress
   return (Just $ Address dstAddress)
 getDstAddress (DstFile dstFile) addressesPath = do
-  maddress <- getAddress dstFile
+  maddress <- getAddressFromFile dstFile
   case maddress of
     Just address -> do
       let dstAddress = fromJust maddress
-      putStrLn $ "Destination address : " ++ show dstAddress
+      putStrLn $ "Destination address : " ++ getAddress dstAddress
     _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ dstFile
   return maddress
 
 
 -- send amount of token from owner for destination address on given network
 doSend :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> Int -> Maybe String -> Int -> Maybe String -> IO Bool
-doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenName tokenAmount mTokenMetadata
+doSend bNetwork owner mSrcAddress sKeyFile mDstAddress adaAmount mTokenName tokenAmount mTokenMetadata
   | isNothing mSrcAddress = do
-      putStrLn $  "No address found for " ++ show ownerName
+      putStrLn $  "No address found for " ++ getOwner owner
       return False
   | isNothing mTokenName = do
       putStrLn "No token name provided"
@@ -214,5 +214,5 @@ doSend bNetwork ownerName mSrcAddress sKeyFile mDstAddress adaAmount mTokenName 
         -- putStrLn signFile
       return True
     else do
-      putStrLn $ "Address " ++ show (fromJust mSrcAddress) ++ " has no token " ++ fromJust mTokenName
+      putStrLn $ "Address " ++ getAddress (fromJust mSrcAddress) ++ " has no token " ++ fromJust mTokenName
       return False

@@ -16,15 +16,16 @@ import System.Environment
 import Wallet
     ( Owner (..) )
 
-type OwnerName = String
-type PolName = String
+newtype OwnerName = OwnerName { getOwnerName :: String} deriving (Eq, Show)
+newtype PolName = PolName { getPol :: String} deriving (Eq, Show)
+
 data Options = Options OwnerName PolName
 
 parsePol :: Parser PolName
-parsePol = argument str (metavar "POLICY")
+parsePol = PolName <$> argument str (metavar "POLICY")
 
 parseOwner :: Parser OwnerName
-parseOwner = strOption
+parseOwner = OwnerName <$> strOption
           ( long "owner"
          <> short 'o'
          <> metavar "OWNER"
@@ -42,17 +43,18 @@ main = doCreatePolicy =<< execParser opts
      <> header "create-policy - a simple minting policy creator" )
 
 doCreatePolicy :: Options -> IO ()
-doCreatePolicy (Options owner policy) = do
+doCreatePolicy (Options ownerName polName) = do
   loadFile defaultConfig
   addressPath <- getEnv "ADDRESSES_PATH"
   policiesFolder <- getEnv "POLICIES_FOLDER"
-  let cOwner = Owner (capitalized owner)
-  putStrLn $ "Creating policy " ++ policy ++ " for " ++ show cOwner ++ "\n"
-  let policiesPath = getPoliciesPath addressPath cOwner policiesFolder
-  putStrLn $ "Policy path : " ++ policiesPath ++ "/" ++ policy
+  let owner = Owner (capitalized $ getOwnerName ownerName)
+  let policyName = getPol polName
+  putStrLn $ "Creating policy " ++ policyName ++ " for " ++ getOwner owner ++ "\n"
+  let policiesPath = getPoliciesPath addressPath owner policiesFolder
+  putStrLn $ "Policy path : " ++ policiesPath ++ "/" ++ policyName
 
-  mPolicy <- createPolicy policy policiesPath
+  mPolicy <- createPolicy policyName policiesPath
   if isJust mPolicy then do
     putStrLn $ "Policy id : " ++ getPolicyId(fromJust mPolicy)
   else
-    putStrLn $ "Policy " ++ capitalized policy ++ " not created"
+    putStrLn $ "Policy " ++ capitalized policyName ++ " not created"

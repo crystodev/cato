@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-deferred-type-errors #-}
 import Address
-    ( Address, AddressType (Payment), getAddress, getAddressFile, getSKeyFile )
+    ( Address (..), AddressType (Payment), getAddressFromFile, getAddressFile, getSKeyFile )
 import Baseutils
     ( capitalized, formatNumber )
 import Configuration.Dotenv
@@ -113,12 +113,12 @@ burnToken (Options burnOptions) = do
 -- get srcAddress from owner
 getSrcAddress :: Owner -> FilePath -> IO (Maybe Address)
 getSrcAddress owner addressesPath = do
-  maddress <- getAddress $ getAddressFile addressesPath Payment owner
+  maddress <- getAddressFromFile $ getAddressFile addressesPath Payment owner
   case maddress of
     Just address -> do
       let srcAddress = fromJust maddress
-      putStrLn $ "Source address : " ++ show srcAddress
-    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ show owner
+      putStrLn $ "Source address : " ++ getAddress srcAddress
+    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ getOwner owner
   return maddress
 
 -- burn amount of token from owner for destination address on given network
