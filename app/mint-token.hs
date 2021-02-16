@@ -29,18 +29,15 @@ data TokenOptions = TokenAmount TokenAmountOption
                   deriving (Eq, Show)
 
 data TokenAmountOption = TokenAmountOption
-  { token      :: Maybe String
+  { token      :: String
   , amount     :: Int
-  , tokensFile :: Maybe FilePath
+  , policy      :: String
   } deriving (Eq, Show)
 
 data MintOptions = MintOptions
-  { owner       :: String
-  , policy      :: String
+  { ownerName       :: String
   , metadata    :: Maybe String
   , createToken :: Bool
- -- , token :: String
- -- , amount :: Int
   } deriving (Show)
 
 data DstTypeAddress = DstName String
@@ -48,7 +45,7 @@ data DstTypeAddress = DstName String
                     | DstFile FilePath
                     deriving (Eq, Show)
 
-data Options = Options MintOptions DstTypeAddress TokenAmountOption
+data Options = Options MintOptions DstTypeAddress TokenOptions
 
 parseMint :: Parser MintOptions
 parseMint = MintOptions
@@ -57,11 +54,6 @@ parseMint = MintOptions
   <> short 'o'
   <> metavar "OWNER"
   <> help "address owner name" )
-  <*> strOption
-  ( long "policy"
-  <> short 'p'
-  <> metavar "POLICY"
-  <> help "token policy" )
   <*> optional ( strOption
   ( long "json"
   <> short 'j'
@@ -72,17 +64,20 @@ parseMint = MintOptions
   <> short 'c'
   <> help "create token if it does not exist")
 
-{-
 parseTokenOptions :: Parser TokenOptions
 parseTokenOptions =  parseTokenAmount <|> parseTokensFile
 
 parseTokenAmount :: Parser TokenOptions
-parseTokenAmount =  parseTokenAmountOption
--}
-parseTokenAmount :: Parser TokenAmountOption
-parseTokenAmount = TokenAmountOption <$> optional (strOption ( long "token" <> short 't' <> metavar "TOKEN" <> help "token" ))
-                               <*> option auto ( long "amount" <> short 'n' <> metavar "AMOUNT" <> help "tokens amount" <> value 0 )
-                               <*> optional (strOption ( long "tokens-file" <> short 'f' <> metavar "TOKENS" <> help "json tokens file" ))
+
+parseTokenAmount = TokenAmount <$> parseTokenAmountOption
+
+parseTokenAmountOption :: Parser TokenAmountOption
+parseTokenAmountOption = TokenAmountOption <$> strOption ( long "token" <> short 't' <> metavar "TOKEN" <> help "token" )
+                            <*>  option auto ( long "amount" <> short 'n' <> metavar "AMOUNT" <> help "tokens amount" <> value 0 )
+                            <*> strOption ( long "policy" <> short 'p' <> metavar "POLICY" <> help "token policy" )
+
+parseTokensFile :: Parser TokenOptions
+parseTokensFile = TokensFile <$> strOption ( long "tokens-file" <> short 'f' <> metavar "TOKENS" <> help "json tokens file" )
 
 parseDstName :: Parser DstTypeAddress
 parseDstName = DstName <$> strOption ( long "destination" <> short 'd' <> metavar "DESTINATION NAME" <> help "name of destination address owner" )
@@ -97,7 +92,7 @@ parseDstTypeAddress :: Parser DstTypeAddress
 parseDstTypeAddress = parseDstName <|> parseDstAddress <|> parseDstFile
 
 parseOptions :: Parser Options
-parseOptions = Options <$> parseMint <*> parseDstTypeAddress <*> parseTokenAmount
+parseOptions = Options <$> parseMint <*> parseDstTypeAddress <*> parseTokenOptions
 
 main :: IO ()
 main = mintToken =<< execParser opts
@@ -109,55 +104,35 @@ main = mintToken =<< execParser opts
 
 -- mint token
 mintToken :: Options -> IO ()
-mintToken (Options mintOptions dstTypeAddress tokenAmountOption) = do
-  loadFile defaultConfig
-  addressesPath <- getEnv "ADDRESSES_PATH"
-  policiesFolder <- getEnv "POLICIES_FOLDER"
-  networkSocket <- getEnv "CARDANO_NODE_SOCKET_PATH"
-  network <- getEnv "NETWORK"
-  sNetworkMagic <- getEnv "NETWORK_MAGIC"
-  let networkMagic = read sNetworkMagic :: Int
-  networkEra <- lookupEnv "NETWORK_ERA"
-  -- mint owner, policy and token
-  let ownerName = Owner (capitalized $ owner mintOptions)
-      policyName = policy mintOptions
-      mTokenMetadata = metadata mintOptions
-      doCreateToken = createToken mintOptions
-      mTokenName = token tokenAmountOption
-      tokenAmount = amount tokenAmountOption
-      mTokensFileName = tokensFile tokenAmountOption
-      policiesPath = getPoliciesPath addressesPath ownerName policiesFolder
+mintToken (Options mintOptions dstTypeAddress tokenOptions) = do
+    loadFile defaultConfig
+    addressesPath <- getEnv "ADDRESSES_PATH"
+    policiesFolder <- getEnv "POLICIES_FOLDER"
+    networkSocket <- getEnv "CARDANO_NODE_SOCKET_PATH"
+    network <- getEnv "NETWORK"
+    sNetworkMagic <- getEnv "NETWORK_MAGIC"
+    let networkMagic = read sNetworkMagic :: Int
+    networkEra <- lookupEnv "NETWORK_ERA"
+    -- mint owner, policy and token
+    let owner = Owner (capitalized $ ownerName mintOptions)
+        mTokenMetadata = metadata mintOptions
+        doCreateToken = createToken mintOptions
+        policiesPath = getPoliciesPath addressesPath owner policiesFolder
 
-  -- source address and signing key
-  mSrcAddress <- getSrcAddress ownerName addressesPath
-  let sKeyFile = getSKeyFile addressesPath Payment ownerName
+    -- source address and signing key
+    mSrcAddress <- getSrcAddress owner addressesPath
+    let sKeyFile = getSKeyFile addressesPath Payment owner
 
-  -- destination address
-  mDstAddress <- getDstAddress dstTypeAddress addressesPath
+    -- destination address
+    mDstAddress <- getDstAddress dstTypeAddress addressesPath
 
-  -- tokens file
-  tokenList' <- readTokensFromFile mTokensFileName
+    -- tokens file
+    tokenList <- getTokenOption tokenOptions
 
-  mPolicy <- getPolicy policiesPath policyName
-  if isNothing mTokenName then
-    putStrLn "No valid token name found"
-  else if isNothing mPolicy then
-    putStrLn $ policyName ++ " : not a valid policy"
-  else do
-    let polId = policyId (fromJust mPolicy)
-    let tokenList = [Token {tokenName = fromJust mTokenName, tokenAmount=tokenAmount,
-                  tokenId = getTokenId polId (fromJust mTokenName),
-                  tokenPolicyName = policyName } | isJust mTokenName ] ++ tokenList'
-    let tokenName = fromJust mTokenName
-    tokenExists <- doesFileExist $ getTokenPath policiesPath policyName tokenName
-    if not tokenExists && not doCreateToken then
-      putStrLn $ "Token " ++ tokenName ++ " does not exist ; use -c option to create it."
-    else do
-  --    Control.Monad.when (isJust mSrcAddress && isJust mDstAddress && (doCreateToken || tokenExists)) $ do
-      Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
+    Control.Monad.when (isJust mSrcAddress && isJust mDstAddress) $ do
         -- print tokenList
         let bNetwork = BlockchainNetwork { network = "--" ++ network, networkMagic = networkMagic, networkEra = networkEra, networkEnv = networkSocket }
-        doMint bNetwork ownerName mSrcAddress sKeyFile mDstAddress policiesPath tokenList mTokenMetadata
+        doMint bNetwork owner mSrcAddress sKeyFile mDstAddress policiesPath tokenList mTokenMetadata
 
 -- get srcAddress from owner
 getSrcAddress :: Owner -> FilePath -> IO (Maybe Address)
@@ -173,12 +148,13 @@ getSrcAddress owner addressesPath = do
 -- get dstAddress depending on type address provided
 getDstAddress :: DstTypeAddress -> FilePath -> IO (Maybe Address)
 getDstAddress (DstName dstName) addressesPath = do
-  maddress <- getAddressFromFile $ getAddressFile addressesPath Payment (Owner $ capitalized $ show dstName)
+  let payee = Owner (capitalized dstName)
+  maddress <- getAddressFromFile $ getAddressFile addressesPath Payment payee
   case maddress of
     Just address -> do
       let dstAddress = fromJust maddress
       putStrLn $ "Destination address : " ++ getAddress dstAddress
-    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ show dstName
+    _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ getOwner payee
   return maddress
 getDstAddress (DstAddress dstAddress) addressesPath = do
   putStrLn $ "Destination address : " ++ dstAddress
@@ -191,6 +167,13 @@ getDstAddress (DstFile dstFile) addressesPath = do
       putStrLn $ "Destination address : " ++ getAddress dstAddress
     _ -> putStrLn $ "No " ++ show Payment ++ " address for " ++ dstFile
   return maddress
+
+-- get tokens depending on token option
+getTokenOption :: TokenOptions -> IO [Token]
+getTokenOption (TokenAmount tokenAmountOption) =
+    return [Token { tokenName = token tokenAmountOption, tokenAmount = amount tokenAmountOption,
+            tokenId = getTokenId (policy tokenAmountOption) (token tokenAmountOption), tokenPolicyName = policy tokenAmountOption }]
+getTokenOption (TokensFile tokensFile) = readTokensFromFile (Just tokensFile)
 
 -- mint amount of token from owner for destination address on given network
 doMint :: BlockchainNetwork -> Owner -> Maybe Address -> FilePath -> Maybe Address -> String -> [Token] -> Maybe String -> IO ()
